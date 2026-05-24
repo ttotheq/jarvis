@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments / uv
+.venv/
+.python-version.local
+
+# Test & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local configuration & secrets
+.env
+.env.*
+!.env.example
+
+# Models & caches (downloaded, never committed)
+*.bin
+*.onnx
+*.gguf
+models/
+.cache/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
