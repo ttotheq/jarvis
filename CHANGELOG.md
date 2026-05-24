@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 0 spike: `jarvis doctor` command (logic in `jarvis.doctor`) that probes
+  the local voice stack — PortAudio, whisper.cpp, openWakeWord, Kokoro — and
+  exits non-zero naming any missing dependency, with fake-injected tests.
+- `scripts/bench_brain.py`: throwaway benchmark timing `claude -p`
+  time-to-first-token over N runs, with a subprocess-mocked unit test. First
+  live read: ~2.8 s median TTFT (see `docs/phases/phase-0-spike.md`).
 - Project scaffolding: `uv`-managed Python 3.12 package with a `jarvis` CLI
   (`version`, `config` commands).
 - Twelve-factor configuration layer (`jarvis.config`) driven by `JARVIS_*`
