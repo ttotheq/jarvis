@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 2 streaming overlap + state machine (G2.4): `jarvis.brain` gains a
+  streaming path (`Brain.stream`, `--output-format stream-json
+  --include-partial-messages`) that yields assistant text deltas, and a stateful
+  `SentenceStreamer` filter that tracks in-fence / in-tool-block / in-inline-code
+  state and emits a complete sentence only once it is confirmed safe — a code
+  fence that opens mid-stream and never closes is never spoken; segmentation does
+  not split on abbreviations ("Mr.") or decimals ("3.14"). `jarvis.loop` is
+  rewritten as the `IDLE→LISTENING→THINKING→SPEAKING→IDLE` state machine with a
+  producer (token stream → sentence queue) / consumer (TTS) overlap, so the first
+  sentence is spoken before Claude's full response completes. `scripts/bench_brain.py`
+  reports p95. The blocking `Brain.ask` is retained for G1.4 session continuity.
+  Streaming TTFT measured at 2.76 s p50 / 3.24 s p95 — recorded in the Phase 2
+  doc, which flags G2.3 (time-to-first-audio ≤ 1.5 s p50) as unreachable under the
+  spawn-per-turn model and pending renegotiation.
+
+### Changed
+
+- `jarvis.loop.VoiceLoop` now takes a `stream: Callable[[str], Iterator[str]]`
+  (the brain's token stream) instead of a `Brain` instance, and exposes the
+  `State` enum and an optional `on_state` transition observer.
+
 - Phase 1 walking skeleton (push-to-talk): `jarvis.brain` drives Claude Code
   headlessly (`claude -p --output-format json`), parsing `.result`/`.session_id`
   and resuming across turns via `--resume`; `extract_speakable()` strips fenced
