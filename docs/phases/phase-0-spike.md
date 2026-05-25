@@ -1,9 +1,9 @@
 # Phase 0 — Spike & de-risk
 
-- **Status:** Engineering complete — `jarvis doctor` and `scripts/bench_brain.py`
-  landed with tests and CI green; live voice-stack install and voice audition
-  (G0.3) deferred to the Phase 1 setup step (the stack is not yet installed on
-  this machine, as `jarvis doctor` confirms).
+- **Status:** Done — `jarvis doctor` and `scripts/bench_brain.py` landed with
+  tests and CI green (G0.1, G0.2, G0.4). The voice stack was installed during the
+  Phase 1 setup step (`jarvis doctor` now exits 0) and the G0.3 audition picked
+  `bm_george`; see the updated Outcomes below.
 - **Milestone:** Phase 0
 - **Objective:** Prove the local voice stack installs and runs on this Mac, and
   that the Claude headless brain round-trips, before committing to the build.
