@@ -19,7 +19,7 @@ Everything in the voice path runs on-device (Apple Silicon). The only thing that
 |------|------|--------|
 | [0 — Spike & de-risk](docs/phases/phase-0-spike.md) | Prove the local stack installs and Claude round-trips on this Mac | ✅ Done |
 | [1 — Walking skeleton](docs/phases/phase-1-skeleton.md) | Push-to-talk → STT → Claude → TTS, end to end | ✅ Done |
-| [2 — Wake word + streaming](docs/phases/phase-2-wakeword-streaming.md) | "Hey Jarvis" activation, sub-1.5 s response | Not started |
+| [2 — Wake word + streaming](docs/phases/phase-2-wakeword-streaming.md) | "Hey Jarvis" activation, sub-1.5 s response | 🚧 In progress |
 | [3 — Jarvis feel](docs/phases/phase-3-jarvis-feel.md) | Barge-in, persona, spoken permission gating | Not started |
 | [4 — Daemon polish](docs/phases/phase-4-daemon.md) | Always-on launchd service, v1.0.0 release | Not started |
 
