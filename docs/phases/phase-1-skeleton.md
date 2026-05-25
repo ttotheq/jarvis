@@ -84,7 +84,7 @@ coverage ≥ 80%; docs + CHANGELOG updated.
 
 | ID | Status | Evidence |
 |----|--------|----------|
-| G1.1 | **Logic verified; live session pending (human)** | `tests/test_loop.py` runs 5 consecutive exchanges with fakes, no crash. Stack installed; the live `jarvis run` session needs a person at the mic. |
+| G1.1 | **Cascade verified live; human-mic session pending** | `tests/test_loop.py` runs 5 exchanges with fakes. A synthetic end-to-end dry run (Kokoro "voice" → real whisper.cpp → real `claude -p` → real Kokoro → sounddevice playback) ran 5 consecutive turns with no crash, including live `--resume` (turn 3 recalled the fact from turn 1). Only a real person at the mic remains. |
 | G1.2 | **Pipeline verified; human dev set pending** | `word_error_rate()` covered by `tests/test_stt_accuracy.py`; the live STT path is proven (Kokoro→whisper.cpp round-trip, WER 0.0). The 20-utterance assertion skips until the human recordings populate the manifest. |
 | G1.3 | **Met** | `tests/test_brain_extraction.py` — code/tool blocks 100% stripped on the fixture. |
 | G1.4 | **Met** | `tests/test_brain_session.py` — turns 2+ pass `--resume <session_id>` from turn 1. |
@@ -97,11 +97,20 @@ espeak-ng`, the `voice` extra wheels (`kokoro`, `numpy`, `openwakeword`,
 `sounddevice`, `soundfile`), and the `ggml-large-v3-turbo.bin` model in
 `~/.cache/jarvis/whisper`. `jarvis doctor` exits 0.
 
+### Live validation (synthetic end-to-end)
+
+The full real cascade was exercised with only the microphone replaced (Kokoro
+synthesizes the "spoken" question): real whisper.cpp → real `claude -p` → real
+Kokoro reply → sounddevice playback. Five consecutive turns ran with no crash,
+and live session continuity held — turn 3 ("what did I say my favorite color
+was?") answered "Your favorite color is blue.", recalling the fact stated in
+turn 1 via `--resume`.
+
 ### Remaining (human-in-the-loop)
 
-- **G0.3** — three samples are in `samples/voice-audition/` (`bm_george.wav`,
-  `bm_lewis.wav`, `bm_fable.wav`); operator auditions and confirms the default.
-- **G1.1** — run `uv run jarvis run` and hold a real ≥5-exchange spoken session.
+- **G0.3** — done (`bm_george` confirmed by audition; see Phase 0 Outcomes).
+- **G1.1** — cascade proven above; the final sign-off is a person running
+  `uv run jarvis run` and holding a real ≥5-exchange spoken session at the mic.
 - **G1.2** — record the 20 utterances named in `tests/fixtures/stt/devset.json`,
   transcribe each with whisper.cpp, and fill the `hypothesis` fields; the test
   then asserts mean WER ≤ 10%.
