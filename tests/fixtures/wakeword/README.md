@@ -1,12 +1,24 @@
 # Wake-word audio fixtures (Phase 2 goal G2.1)
 
-The live true-accept test (`tests/test_wakeword.py::test_labeled_fixtures_meet_targets`)
-runs the real openWakeWord `hey_jarvis` model over labeled recordings and asserts
+The accuracy test (`tests/test_wakeword.py::test_labeled_fixtures_meet_targets`)
+runs the real openWakeWord `hey_jarvis` model over labeled clips and asserts
 true-accept ≥ 95% over ≥ 20 utterances and false-accept ≤ 1 per 30 min. It is
-**skipped** until `manifest.json` exists here, so CI (no microphone, no model)
-stays green; recording the clips is the live verification step.
+**skipped** until `manifest.json` + the WAVs exist here, so CI (no microphone, no
+voice extra) stays green. The audio is git-ignored and regenerable.
 
-## Recording the set
+## Quick path — synthesize the set (recommended)
+
+```sh
+uv sync --extra voice                       # Kokoro, openWakeWord, scipy, …
+python scripts/gen_wakeword_fixtures.py     # writes WAVs + manifest.json, prints metrics
+make test                                   # the skipped accuracy test now runs and gates
+```
+
+The generator uses the same TTS that voices Jarvis to build 24 "hey jarvis"
+positives + 30 min of near-miss-laden ambient, then measures. The numbers (and the
+synthetic-vs-live caveat) are in the Phase 2 doc Outcomes.
+
+## Gold-standard path — record real audio
 
 1. Install the voice extra and a microphone: `uv sync --extra voice`.
 2. Record mono 16 kHz PCM16 WAVs into this directory:
@@ -17,7 +29,7 @@ stays green; recording the clips is the live verification step.
 
    ```json
    {
-     "threshold": 0.5,
+     "threshold": 0.9,
      "positives": ["pos01.wav", "pos02.wav", "..."],
      "ambient": ["amb01.wav", "amb02.wav", "..."]
    }

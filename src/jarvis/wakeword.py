@@ -132,9 +132,10 @@ class OpenWakeWordDetector:  # pragma: no cover - requires the openWakeWord mode
         import openwakeword
         from openwakeword.model import Model
 
-        # Idempotent: fetches the pretrained wake-word + feature models on first run.
-        openwakeword.utils.download_models([self._settings.wake_word])
-        self._model = Model()  # loads the downloaded pretrained models
+        # The pretrained wake-word + feature ONNX models ship bundled with the
+        # package; resolve the configured wake word's path and load just it.
+        model_path = openwakeword.models[self._settings.wake_word]["model_path"]
+        self._model = Model(wakeword_model_paths=[model_path])
         self._wake_word = self._settings.wake_word
 
     def __call__(self, frame: bytes) -> float:
