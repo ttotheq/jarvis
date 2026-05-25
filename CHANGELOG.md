@@ -8,6 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 1 walking skeleton (push-to-talk): `jarvis.brain` drives Claude Code
+  headlessly (`claude -p --output-format json`), parsing `.result`/`.session_id`
+  and resuming across turns via `--resume`; `extract_speakable()` strips fenced
+  code and tool-use/tool-result blocks (G1.3, G1.4). `jarvis.audio` provides a
+  device-agnostic PCM16 capture loop, `jarvis.stt` a `word_error_rate()` metric
+  plus a whisper.cpp transcriber, and `jarvis.tts` a Kokoro synthesizer with an
+  empty-reply guard. `jarvis.loop` orchestrates capture → STT → brain → TTS and
+  `jarvis run` exposes the push-to-talk loop. Hardware/native edges are injected
+  and tested with fakes; `mypy` ignores the optional voice-stack stubs.
 - Phase 0 spike: `jarvis doctor` command (logic in `jarvis.doctor`) that probes
   the local voice stack — PortAudio, whisper.cpp, openWakeWord, Kokoro — and
   exits non-zero naming any missing dependency, with fake-injected tests.
