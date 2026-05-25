@@ -95,13 +95,12 @@ timing and aggregation logic with a fake and never makes a network call.
 
 ### G0.3 — Voice chosen
 
-Default is **`bm_george`** (British male) in `.env.example` / `jarvis.config`.
-With Kokoro now installed, audition samples for `bm_george` / `bm_lewis` /
-`bm_fable` were synthesized through `jarvis.tts` to
-`samples/voice-audition/*.wav` (the same line in each voice). The operator
-listens (`afplay samples/voice-audition/<voice>.wav`) and confirms or changes
-the default; the choice is revisitable via `JARVIS_TTS_VOICE` with no code
-change. _Pending the listening pick._
+**Chosen: `bm_george`** (British male). With Kokoro installed, audition samples
+for `bm_george` / `bm_lewis` / `bm_fable` were synthesized through `jarvis.tts`
+to `samples/voice-audition/*.wav` (the same line in each voice) and auditioned
+on this Mac; `bm_george` was confirmed as the default. It remains the default in
+`.env.example` / `jarvis.config` and is revisitable via `JARVIS_TTS_VOICE` with
+no code change. **G0.3 met.**
 
 ### G0.4 — CI green
 
