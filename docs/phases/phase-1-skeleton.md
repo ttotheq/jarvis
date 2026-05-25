@@ -1,12 +1,14 @@
 # Phase 1 — Walking skeleton (push-to-talk)
 
-- **Status:** Engineering complete — all four modules (`jarvis.audio`,
-  `jarvis.stt`, `jarvis.brain`, `jarvis.tts`), the `jarvis.loop` orchestrator,
-  and `jarvis run` are implemented with tests and `make check` green (98.8%
-  coverage). The hardware-dependent goals — G1.1 (live ≥5-exchange session),
-  G1.2 (WER over recorded utterances), and the deferred G0.3 voice audition —
-  remain pending the native voice-stack install on this machine (`jarvis doctor`
-  still reports all four components missing).
+- **Status:** Engineering complete and the voice stack is installed — all four
+  modules (`jarvis.audio`, `jarvis.stt`, `jarvis.brain`, `jarvis.tts`), the
+  `jarvis.loop` orchestrator, and `jarvis run` are implemented with tests and
+  `make check` green (98.8% coverage); `jarvis doctor` now exits 0 (PortAudio,
+  whisper.cpp, openWakeWord, Kokoro all present). The TTS and STT paths are
+  validated live (Kokoro synthesis → whisper.cpp transcription round-trips at
+  WER 0.0). What remains is human-in-the-loop: G1.1 (a live ≥5-exchange spoken
+  session), G1.2 (recording the 20-utterance human dev set and scoring it), and
+  the G0.3 voice pick (samples generated in `samples/voice-audition/`).
 - **Milestone:** Phase 1
 - **Objective:** A clunky-but-complete spoken conversation with Claude Code:
   push a key, speak, hear a spoken reply. Synchronous; no wake word, no
@@ -82,25 +84,33 @@ coverage ≥ 80%; docs + CHANGELOG updated.
 
 | ID | Status | Evidence |
 |----|--------|----------|
-| G1.1 | **Logic verified; live pending** | `tests/test_loop.py` runs 5 consecutive exchanges with fakes, no crash. Live recorded session blocked on native install. |
-| G1.2 | **Metric verified; live pending** | `word_error_rate()` covered by `tests/test_stt_accuracy.py`. The 20-utterance dev-set assertion skips until recordings exist (needs whisper.cpp). |
+| G1.1 | **Logic verified; live session pending (human)** | `tests/test_loop.py` runs 5 consecutive exchanges with fakes, no crash. Stack installed; the live `jarvis run` session needs a person at the mic. |
+| G1.2 | **Pipeline verified; human dev set pending** | `word_error_rate()` covered by `tests/test_stt_accuracy.py`; the live STT path is proven (Kokoro→whisper.cpp round-trip, WER 0.0). The 20-utterance assertion skips until the human recordings populate the manifest. |
 | G1.3 | **Met** | `tests/test_brain_extraction.py` — code/tool blocks 100% stripped on the fixture. |
 | G1.4 | **Met** | `tests/test_brain_session.py` — turns 2+ pass `--resume <session_id>` from turn 1. |
 | G1.5 | **Met** | Coverage 98.8% (≥ 80%). |
 
-### Pending the voice-stack install (SETUP STEP)
+### Setup completed (SETUP STEP)
 
-`jarvis doctor` reports PortAudio, whisper.cpp, openWakeWord, and Kokoro all
-missing. Once installed, the remaining work is: record the 20-utterance dev set
-and run real whisper.cpp to populate `tests/fixtures/stt/devset.json` (G1.2);
-hold a real ≥5-exchange spoken session and record it here (G1.1); audition
-`bm_george`/`bm_lewis`/`bm_fable` and confirm the default (G0.3).
+The voice stack is installed on this Mac: `brew install portaudio whisper-cpp
+espeak-ng`, the `voice` extra wheels (`kokoro`, `numpy`, `openwakeword`,
+`sounddevice`, `soundfile`), and the `ggml-large-v3-turbo.bin` model in
+`~/.cache/jarvis/whisper`. `jarvis doctor` exits 0.
+
+### Remaining (human-in-the-loop)
+
+- **G0.3** — three samples are in `samples/voice-audition/` (`bm_george.wav`,
+  `bm_lewis.wav`, `bm_fable.wav`); operator auditions and confirms the default.
+- **G1.1** — run `uv run jarvis run` and hold a real ≥5-exchange spoken session.
+- **G1.2** — record the 20 utterances named in `tests/fixtures/stt/devset.json`,
+  transcribe each with whisper.cpp, and fill the `hypothesis` fields; the test
+  then asserts mean WER ≤ 10%.
 
 ### Assumptions made
 
 - **Push-to-talk = stdin Enter-to-start / Enter-to-stop.** True global hotkey
   capture needs an extra dependency; the skeleton uses a dependency-free,
   injectable gate. Revisitable.
-- The native voice wheels are **not** yet pinned into the `voice` extra (Kokoro
-  pulls torch — an install-size decision left to the operator); backends
-  lazy-import so the core package and CI stay light.
+- The native voice wheels are pinned into the optional `voice` extra (install
+  with `uv sync --extra voice`); they pull torch via Kokoro, so they stay out of
+  the default sync and backends lazy-import — the core package and CI stay light.
