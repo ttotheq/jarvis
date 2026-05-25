@@ -50,13 +50,26 @@ WAKE_PHRASINGS = ("Hey Jarvis.", "Hey Jarvis!", "Hey, Jarvis?", "Hey Jarvis, are
 # Non-wake speech for the ambient bed, including near-miss distractors that stress
 # the false-accept rate. None of these contain the wake word.
 DISTRACTORS = (
-    "What time is it?", "Turn on the kitchen lights.", "Hey there, how are you?",
-    "Hey Travis, did you call?", "Play some jazz, please.", "The weather looks nice today.",
-    "Hey Marcus, over here.", "Could you pass the salt?", "Let's go for a walk later.",
-    "Hey Charles, are you ready?", "I left my keys on the table.", "Set a timer for ten minutes.",
-    "Hey, Garrett, wait up.", "The meeting is at three o'clock.", "Where did I park the car?",
-    "Hey Jarrah, nice to meet you.", "Remind me to buy milk.", "It's getting cold outside.",
-    "Hey everyone, gather round.", "Have you seen my glasses anywhere?",
+    "What time is it?",
+    "Turn on the kitchen lights.",
+    "Hey there, how are you?",
+    "Hey Travis, did you call?",
+    "Play some jazz, please.",
+    "The weather looks nice today.",
+    "Hey Marcus, over here.",
+    "Could you pass the salt?",
+    "Let's go for a walk later.",
+    "Hey Charles, are you ready?",
+    "I left my keys on the table.",
+    "Set a timer for ten minutes.",
+    "Hey, Garrett, wait up.",
+    "The meeting is at three o'clock.",
+    "Where did I park the car?",
+    "Hey Jarrah, nice to meet you.",
+    "Remind me to buy milk.",
+    "It's getting cold outside.",
+    "Hey everyone, gather round.",
+    "Have you seen my glasses anywhere?",
 )
 
 
