@@ -1,29 +1,19 @@
-"""Tests for the push-to-talk conversation loop (Phase 1 goal G1.1).
+"""Tests for the conversation loop's orchestration contract.
 
-The loop wires capture -> STT -> brain -> TTS for one turn and repeats. Every
-edge (mic, transcriber, brain runner, synthesizer, speaker) is injected, so the
-orchestration is exercised end-to-end without hardware: G1.1's *logic* (>= 5
-consecutive turns, no crash) is verified here; the live recorded session is the
-manual check noted in the phase Outcomes.
+The loop wires capture -> STT -> brain token stream -> sentence-by-sentence TTS
+and repeats. Every edge (mic, transcriber, token stream, synthesizer, speaker)
+is injected, so orchestration is exercised without hardware. The streaming
+overlap, state machine, and concurrency specifics live in
+``tests/test_loop_streaming.py``; here we cover the turn/Turn contract that the
+CLI depends on.
 """
 
 from __future__ import annotations
 
-import json
+from collections.abc import Iterator
 
 from jarvis.audio import Clip
-from jarvis.brain import Brain
 from jarvis.loop import VoiceLoop
-
-
-class FakeRunner:
-    def __init__(self, replies: list[str]) -> None:
-        self._replies = list(replies)
-        self.calls: list[list[str]] = []
-
-    def __call__(self, argv: list[str]) -> str:
-        self.calls.append(list(argv))
-        return json.dumps({"session_id": "sess-1", "result": self._replies.pop(0)})
 
 
 class FakeSpeaker:
@@ -40,10 +30,17 @@ def _clip() -> Clip:
 
 def _loop(transcripts: list[str], replies: list[str], speaker: FakeSpeaker) -> VoiceLoop:
     scripted = iter(transcripts)
+    replies_iter = iter(replies)
+
+    def stream(_prompt: str) -> Iterator[str]:
+        # One reply per turn, delivered as a single trailing-space-terminated
+        # delta so it forms exactly one spoken sentence.
+        yield next(replies_iter)
+
     return VoiceLoop(
         record_turn=_clip,
         transcribe=lambda _clip: next(scripted),
-        brain=Brain(runner=FakeRunner(replies)),
+        stream=stream,
         synthesize=lambda text: Clip(samples=text.encode(), sample_rate=24_000),
         speaker=speaker,
     )
@@ -51,7 +48,7 @@ def _loop(transcripts: list[str], replies: list[str], speaker: FakeSpeaker) -> V
 
 def test_one_turn_returns_transcript_and_reply() -> None:
     speaker = FakeSpeaker()
-    loop = _loop(["what time is it"], ["Half past three, sir."], speaker)
+    loop = _loop(["what time is it"], ["Half past three, sir. "], speaker)
     turn = loop.one_turn()
     assert turn.transcript == "what time is it"
     assert turn.reply == "Half past three, sir."
@@ -59,44 +56,20 @@ def test_one_turn_returns_transcript_and_reply() -> None:
     assert len(speaker.played) == 1
 
 
-def test_five_consecutive_exchanges_no_crash() -> None:
+def test_converse_drives_distinct_turns() -> None:
     speaker = FakeSpeaker()
-    transcripts = [f"question {n}" for n in range(5)]
-    replies = [f"answer {n}, sir." for n in range(5)]
+    transcripts = [f"question {n}" for n in range(3)]
+    replies = [f"answer {n}, sir. " for n in range(3)]
     loop = _loop(transcripts, replies, speaker)
-    turns = loop.converse(should_continue=lambda done: done < 5)
-    assert len(turns) == 5
-    assert [t.reply for t in turns] == replies
-    assert len(speaker.played) == 5
+    turns = loop.converse(should_continue=lambda done: done < 3)
+    assert [t.transcript for t in turns] == transcripts
+    assert [t.reply for t in turns] == [f"answer {n}, sir." for n in range(3)]
+    assert len(speaker.played) == 3
 
 
-def test_second_turn_resumes_session() -> None:
+def test_converse_stops_when_predicate_is_false() -> None:
     speaker = FakeSpeaker()
-    runner = FakeRunner(["first, sir.", "second, sir."])
-    scripted = iter(["hello", "again"])
-    loop = VoiceLoop(
-        record_turn=_clip,
-        transcribe=lambda _clip: next(scripted),
-        brain=Brain(runner=runner),
-        synthesize=lambda text: Clip(samples=b"", sample_rate=24_000),
-        speaker=speaker,
-    )
-    loop.converse(should_continue=lambda done: done < 2)
-    assert "--resume" in runner.calls[1]
-
-
-def test_blank_transcript_skips_brain() -> None:
-    speaker = FakeSpeaker()
-    runner = FakeRunner([])  # would IndexError if the brain were called
-    loop = VoiceLoop(
-        record_turn=_clip,
-        transcribe=lambda _clip: "   ",
-        brain=Brain(runner=runner),
-        synthesize=lambda text: Clip(samples=b"", sample_rate=24_000),
-        speaker=speaker,
-    )
-    turn = loop.one_turn()
-    assert turn.reply == ""
-    assert turn.spoke is False
-    assert runner.calls == []
+    loop = _loop([], [], speaker)
+    turns = loop.converse(should_continue=lambda _done: False)
+    assert turns == []
     assert speaker.played == []

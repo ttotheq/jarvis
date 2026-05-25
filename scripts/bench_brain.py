@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import subprocess
 import sys
@@ -73,6 +74,13 @@ class BenchResult:
     @property
     def median_s(self) -> float:
         return statistics.median(self.samples_s)
+
+    @property
+    def p95_s(self) -> float:
+        """95th percentile by the nearest-rank method (robust for small N)."""
+        ordered = sorted(self.samples_s)
+        rank = max(1, math.ceil(0.95 * len(ordered)))
+        return ordered[rank - 1]
 
     @property
     def mean_s(self) -> float:
@@ -144,6 +152,7 @@ def _format_summary(result: BenchResult) -> str:
     return (
         f"claude -p time-to-first-token over {result.runs} run(s):\n"
         f"  median {result.median_s * 1000:.0f} ms | "
+        f"p95 {result.p95_s * 1000:.0f} ms | "
         f"mean {result.mean_s * 1000:.0f} ms | "
         f"min {result.min_s * 1000:.0f} ms | "
         f"max {result.max_s * 1000:.0f} ms"

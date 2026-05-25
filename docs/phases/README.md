@@ -43,7 +43,7 @@ as the unit of tracking.
 | G1.4 | Session continuity | Turn 3 correctly references turn 1 via `--resume` | `tests/test_brain_session.py` |
 | G1.5 | Coverage | ≥ 80% | CI |
 
-### Phase 2 — Wake word + streaming · _Not started_
+### Phase 2 — Wake word + streaming · _In progress_
 | ID | Metric | Target | Verification |
 |----|--------|--------|--------------|
 | G2.1 | Wake-word detection | True-accept ≥ 95% / 20 utterances; false-accept ≤ 1 per 30 min ambient | `tests/test_wakeword.py` on audio fixtures + soak |

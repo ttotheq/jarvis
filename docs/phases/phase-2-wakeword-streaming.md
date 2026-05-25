@@ -1,6 +1,6 @@
 # Phase 2 — Wake word + streaming
 
-- **Status:** Not started
+- **Status:** In progress
 - **Milestone:** Phase 2
 - **Objective:** Replace push-to-talk with always-on "Hey Jarvis", and make it
   feel responsive by streaming every stage. This is where latency becomes a
@@ -46,4 +46,41 @@ All goals met; latency benchmark recorded in Outcomes; "Hey Jarvis" works hands
 
 ## Outcomes
 
-_To be filled in as the phase completes (latency distribution, false-accept rate)._
+### G2.4 — Streaming overlap + state machine (done)
+
+The brain gained a streaming path (`Brain.stream`, `--output-format stream-json
+--include-partial-messages`) that yields assistant text deltas; `loop.py` was
+rewritten as the `IDLE→LISTENING→THINKING→SPEAKING→IDLE` state machine with a
+producer (token stream → `SentenceStreamer` → sentence queue) / consumer (TTS)
+overlap. `extract_speakable`'s whole-string regex was joined by
+`SentenceStreamer`, a stateful filter that tracks in-fence / in-tool-block /
+in-inline-code state and emits a sentence only once it is confirmed safe *and* a
+boundary is reached — a code fence that opens mid-stream and never closes is
+never spoken. Sentence segmentation does not split on abbreviations ("Mr.") or
+decimals ("3.14"). Verified by `tests/test_loop_streaming.py` (first sentence
+spoken before the stream completes; full state graph) plus
+`tests/test_speakable_stream.py` and `tests/test_brain_streaming.py`.
+
+### Streaming-TTFT de-risk (STEP 0, `scripts/bench_brain.py` extended with p95)
+
+Measured time-to-first-token under `stream-json --include-partial-messages`:
+
+| Prompt | Runs | First-token p50 | First-token p95 | Completion p50 | Overlap window p50 |
+|--------|------|-----------------|-----------------|----------------|--------------------|
+| one word ("ready") | 20 | 2762 ms | 3235 ms | ~= first token | — |
+| multi-sentence prose | 5 | 4338 ms | — | 7717 ms | **3203 ms** |
+
+**Streaming is worth it (G2.4):** speaking the first sentence buys a ~3.2 s head
+start over waiting for the full reply, and that window grows with reply length.
+
+> [!WARNING]
+> **G2.3 (time-to-first-audio ≤ 1.5 s p50) is unreachable as currently
+> architected.** The brain's first-token latency alone (≥ 2.76 s p50) exceeds the
+> whole budget before STT/TTS are added. The ~1.9 s floor is `claude` CLI process
+> startup, paid per turn under the spawn-per-turn model (ADR-0003); streaming
+> does not reduce absolute TTFT — only a persistent brain process (Agent SDK /
+> long-lived `claude`, the revisit ADR-0003 anticipates) would. **G2.3 must be
+> renegotiated against this distribution or re-architected before it is chased.**
+
+_Wake-word false-accept rate and endpoint-latency distribution to be filled in as
+G2.1 / G2.2 land._

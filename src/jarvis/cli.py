@@ -151,7 +151,7 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
     loop = VoiceLoop(
         record_turn=record_turn,
         transcribe=WhisperCppTranscriber(settings),
-        brain=Brain(settings),
+        stream=Brain(settings).stream,
         synthesize=build_default_synthesizer(),
         speaker=build_default_speaker(),
     )
