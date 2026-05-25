@@ -77,13 +77,28 @@ def _push_to_talk_record_turn(  # pragma: no cover - requires a real microphone
     return _record
 
 
+# A guided script for the hands-free session: each line is spoken aloud and you
+# repeat it, so there's no guesswork about what to say. Line 4 deliberately
+# tests session continuity (it refers back to line 2) — G1.1 + live --resume.
+_GUIDED_PROMPTS = (
+    "Hello Jarvis, can you hear me?",
+    "My name is Ty. Please remember it.",
+    "What is two plus two?",
+    "What did I tell you my name was?",
+    "Thank you, that is all for now.",
+)
+
+
 def _timed_record_turn(  # pragma: no cover - requires a real microphone
     sample_rate: int,
     seconds: float,
+    prompts: tuple[str, ...] = (),
 ) -> Callable[[], Clip]:
     """Build a hands-free record-one-turn callable: spoken cue, beep, fixed window.
 
     Works in non-interactive shells (no keyboard), unlike the Enter-gated mode.
+    If ``prompts`` is given, the matching line is spoken (and printed) before each
+    turn so you know exactly what to repeat.
     """
     import shutil
     import subprocess
@@ -92,10 +107,17 @@ def _timed_record_turn(  # pragma: no cover - requires a real microphone
     from jarvis.audio import make_sounddevice_source, record
 
     say = shutil.which("say")
+    turn = {"i": 0}
 
     def _record() -> Clip:
+        i = turn["i"]
+        turn["i"] += 1
+        line = prompts[i] if i < len(prompts) else None
+        if line is not None:
+            typer.echo(f"\n[turn {i + 1}] Repeat aloud:  {line!r}")
         if say is not None:
-            subprocess.run([say, "Your turn. Speak after the beep."], check=False)
+            cue = f"Repeat after the beep: {line}" if line else "Your turn. Speak after the beep."
+            subprocess.run([say, cue], check=False)
             subprocess.run([say, "[[volm 0.4]] beep"], check=False)
         source = make_sounddevice_source(sample_rate)
         deadline = time.monotonic() + seconds
@@ -121,7 +143,9 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
 
     settings = get_settings()
     if settings.ptt_seconds is not None:
-        record_turn = _timed_record_turn(settings.sample_rate, settings.ptt_seconds)
+        record_turn = _timed_record_turn(
+            settings.sample_rate, settings.ptt_seconds, prompts=_GUIDED_PROMPTS
+        )
     else:
         record_turn = _push_to_talk_record_turn(settings.sample_rate)
     loop = VoiceLoop(
