@@ -48,3 +48,21 @@ def test_does_not_mutate_input_entries() -> None:
     entries = [{"audio": "utt01.wav", "reference": "alpha", "hypothesis": None}]
     record_devset(entries, capture=_clip, transcribe=lambda _c: "alpha")
     assert entries[0]["hypothesis"] is None
+
+
+def test_persists_full_manifest_after_each_utterance() -> None:
+    entries = [
+        {"audio": "utt01.wav", "reference": "alpha", "hypothesis": None},
+        {"audio": "utt02.wav", "reference": "beta", "hypothesis": None},
+    ]
+    scripted = iter(["alpha", "beta"])
+    snapshots: list[list[str | None]] = []
+
+    def _persist(result: list[dict[str, object]]) -> None:
+        # capture each entry's hypothesis at save time (deep enough for str|None)
+        snapshots.append([e.get("hypothesis") for e in result])  # type: ignore[misc]
+
+    record_devset(entries, capture=_clip, transcribe=lambda _c: next(scripted), persist=_persist)
+    # Saved once per recorded utterance; each save holds the full manifest so a
+    # crash mid-run leaves a resumable file.
+    assert snapshots == [["alpha", None], ["alpha", "beta"]]
