@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 #: A frame source: returns the next chunk of PCM16 bytes from the input device.
 FrameSource = Callable[[], bytes]
@@ -36,6 +37,12 @@ class Clip:
         if self.sample_rate <= 0:
             return 0.0
         return self.num_samples / self.sample_rate
+
+
+class Speaker(Protocol):
+    """Anything that can play a clip through an output device."""
+
+    def play(self, clip: Clip) -> None: ...
 
 
 def record(source: FrameSource, stop: Callable[[], bool], sample_rate: int) -> Clip:
