@@ -1,6 +1,9 @@
 # Phase 0 — Spike & de-risk
 
-- **Status:** Not started
+- **Status:** Engineering complete — `jarvis doctor` and `scripts/bench_brain.py`
+  landed with tests and CI green; live voice-stack install and voice audition
+  (G0.3) deferred to the Phase 1 setup step (the stack is not yet installed on
+  this machine, as `jarvis doctor` confirms).
 - **Milestone:** Phase 0
 - **Objective:** Prove the local voice stack installs and runs on this Mac, and
   that the Claude headless brain round-trips, before committing to the build.
@@ -46,5 +49,71 @@ Outcomes; `make check` and CI green.
 
 ## Outcomes
 
-_To be filled in as the phase completes (benchmark numbers, chosen voice,
-go/no-go decision, surprises)._
+### G0.1 — Local components available
+
+`jarvis doctor` (in `jarvis.cli`, logic in `jarvis.doctor`) probes the four
+voice-stack dependencies and exits non-zero naming any that are missing, exit 0
+when all present. On this machine, none of the native components are installed
+yet, so it correctly reports:
+
+```
+Jarvis environment check:
+  [MISS] PortAudio     not found — `brew install portaudio`
+  [MISS] whisper.cpp   not found — build whisper.cpp and put its CLI on PATH
+  [MISS] openWakeWord  not found — `pip install openwakeword`
+  [MISS] Kokoro        not found — `pip install kokoro`
+
+Missing: PortAudio, whisper.cpp, openWakeWord, Kokoro
+```
+
+The all-present (exit 0) and any-missing (exit 1) paths are covered by
+`tests/test_doctor.py` with injected fake probes, so the gate is verified
+without the native libraries installed.
+
+### G0.2 — Claude round-trip (time-to-first-token)
+
+`scripts/bench_brain.py` spawns `claude -p ... --output-format stream-json
+--include-partial-messages` and times the interval from launch to the first
+line of **model** output (the `system`/`init` event is skipped — timing to it
+would measure process startup, not the brain responding).
+
+Live result, 10 runs, prompt "Reply with exactly one word: ready":
+
+| Metric | Value |
+|--------|-------|
+| Median | **2796 ms** |
+| Mean   | 3017 ms |
+| Min    | 1895 ms |
+| Max    | 4418 ms |
+
+Interpretation: ~2.8 s to first token is on the slow side of conversational but
+acceptable as a worst case, because TTS streams the reply as it arrives — the
+user hears speech shortly after the first token, not after the full response.
+The subprocess is fully injected, so `tests/test_bench_brain.py` exercises the
+timing and aggregation logic with a fake and never makes a network call.
+
+### G0.3 — Voice chosen
+
+Default left at **`bm_george`** (British male) in `.env.example` /
+`jarvis.config`. A real audition across `bm_george` / `bm_lewis` / `bm_fable`
+requires Kokoro installed, which it is not yet (see G0.1); the listening test is
+deferred to the Phase 1 install step and the choice is revisitable via
+`JARVIS_TTS_VOICE` with no code change.
+
+### G0.4 — CI green
+
+`make check` (ruff lint + format, mypy strict, pytest) passes locally at 100%
+coverage; CI on the PR is green (see the PR's checks).
+
+### Go/no-go
+
+**Go.** The two questions the spike existed to answer are settled: the
+environment self-check works and is test-covered, and `claude -p`
+time-to-first-token (~2.8 s median) is within the budget that streaming TTS can
+mask. Native voice-stack install and the voice audition move into Phase 1.
+
+### Surprises
+
+- Timing to the first *stdout line* (≈420 ms) measures only `claude` startup
+  plus the session-init event — not the model. Skipping the `system` event was
+  necessary to get an honest time-to-first-token (≈2.8 s).

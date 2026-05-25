@@ -58,7 +58,9 @@ disallow_untyped_decorators = false
 [tool.pytest.ini_options]
 addopts = "-ra -q --cov=jarvis --cov-report=term-missing --cov-fail-under=80"
 testpaths = ["tests"]
-pythonpath = ["src"]
+# "scripts" is on the path so the throwaway Phase 0 bench (scripts/bench_brain.py)
+# can be imported and unit-tested without packaging it.
+pythonpath = ["src", "scripts"]
 
 [tool.coverage.run]
 branch = true

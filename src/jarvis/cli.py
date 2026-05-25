@@ -11,6 +11,7 @@ import typer
 
 from jarvis import __version__
 from jarvis.config import get_settings
+from jarvis.doctor import run_doctor
 
 app = typer.Typer(
     name="jarvis",
@@ -32,3 +33,12 @@ def config() -> None:
     settings = get_settings()
     for key, value in settings.model_dump().items():
         typer.echo(f"{key} = {value}")
+
+
+@app.command()
+def doctor() -> None:
+    """Check the local voice stack (PortAudio, whisper.cpp, openWakeWord, Kokoro).
+
+    Exits non-zero and names any missing dependency; exits 0 when all present.
+    """
+    raise typer.Exit(code=run_doctor(write=typer.echo))
