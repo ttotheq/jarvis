@@ -1,14 +1,12 @@
 # Phase 1 — Walking skeleton (push-to-talk)
 
-- **Status:** Engineering complete and the voice stack is installed — all four
-  modules (`jarvis.audio`, `jarvis.stt`, `jarvis.brain`, `jarvis.tts`), the
-  `jarvis.loop` orchestrator, and `jarvis run` are implemented with tests and
-  `make check` green (98.8% coverage); `jarvis doctor` now exits 0 (PortAudio,
-  whisper.cpp, openWakeWord, Kokoro all present). The TTS and STT paths are
-  validated live (Kokoro synthesis → whisper.cpp transcription round-trips at
-  WER 0.0). What remains is human-in-the-loop: G1.1 (a live ≥5-exchange spoken
-  session), G1.2 (recording the 20-utterance human dev set and scoring it), and
-  the G0.3 voice pick (samples generated in `samples/voice-audition/`).
+- **Status:** Done — all five goals met. The four modules (`jarvis.audio`,
+  `jarvis.stt`, `jarvis.brain`, `jarvis.tts`), the `jarvis.loop` orchestrator,
+  and `jarvis run` are implemented with tests; `make check` and CI green (98.8%
+  coverage). The voice stack is installed (`jarvis doctor` exits 0). A real
+  spoken ≥5-exchange session ran end-to-end with no crash and live `--resume`
+  continuity (G1.1), and the 20-utterance human dev set scores mean WER 7.3%
+  (G1.2). G0.3 voice pick (`bm_george`) confirmed by audition.
 - **Milestone:** Phase 1
 - **Objective:** A clunky-but-complete spoken conversation with Claude Code:
   push a key, speak, hear a spoken reply. Synchronous; no wake word, no
@@ -84,7 +82,7 @@ coverage ≥ 80%; docs + CHANGELOG updated.
 
 | ID | Status | Evidence |
 |----|--------|----------|
-| G1.1 | **Cascade verified live; human-mic session pending** | `tests/test_loop.py` runs 5 exchanges with fakes. A synthetic end-to-end dry run (Kokoro "voice" → real whisper.cpp → real `claude -p` → real Kokoro → sounddevice playback) ran 5 consecutive turns with no crash, including live `--resume` (turn 3 recalled the fact from turn 1). Only a real person at the mic remains. |
+| G1.1 | **Met** | A real spoken session (`jarvis run`, hands-free timed mode) ran 5 consecutive exchanges with no crash (exit 0). Live `--resume` continuity confirmed: turn 4 "What did I tell you my name was?" → "Ty.", recalling turn 2. whisper transcribed all five utterances accurately. `tests/test_loop.py` covers the loop logic with fakes. |
 | G1.2 | **Met** | 20 human utterances recorded and transcribed by whisper.cpp large-v3-turbo; **mean WER 0.073 (7.3%)**, under the 10% target. `tests/test_stt_accuracy.py::test_devset_wer_under_threshold` now asserts (no longer skips). |
 | G1.3 | **Met** | `tests/test_brain_extraction.py` — code/tool blocks 100% stripped on the fixture. |
 | G1.4 | **Met** | `tests/test_brain_session.py` — turns 2+ pass `--resume <session_id>` from turn 1. |
@@ -97,23 +95,25 @@ espeak-ng`, the `voice` extra wheels (`kokoro`, `numpy`, `openwakeword`,
 `sounddevice`, `soundfile`), and the `ggml-large-v3-turbo.bin` model in
 `~/.cache/jarvis/whisper`. `jarvis doctor` exits 0.
 
-### Live validation (synthetic end-to-end)
+### Live session (G1.1)
 
-The full real cascade was exercised with only the microphone replaced (Kokoro
-synthesizes the "spoken" question): real whisper.cpp → real `claude -p` → real
-Kokoro reply → sounddevice playback. Five consecutive turns ran with no crash,
-and live session continuity held — turn 3 ("what did I say my favorite color
-was?") answered "Your favorite color is blue.", recalling the fact stated in
-turn 1 via `--resume`.
+`jarvis run` was driven hands-free (`JARVIS_PTT_SECONDS=8 JARVIS_MAX_TURNS=5`,
+guided spoken prompts) through a real ≥5-exchange spoken conversation — human
+voice → whisper.cpp → `claude -p` → Kokoro → speakers. The recorded transcript:
 
-### Remaining (human-in-the-loop)
+| # | You said (transcribed) | Jarvis replied (abridged) |
+|---|------------------------|---------------------------|
+| 1 | Hello Jarvis, can you hear me? | "Loud and clear…" |
+| 2 | My name is Ty. Please remember it. | "Done, Ty. Saved to memory." |
+| 3 | What is two plus two? | "4." |
+| 4 | What did I tell you my name was? | **"Ty."** (recalls turn 2 via `--resume`) |
+| 5 | Thank you. That is all for now. | "Anytime, Ty." |
 
-- **G0.3** — done (`bm_george` confirmed by audition; see Phase 0 Outcomes).
-- **G1.1** — cascade proven above; the final sign-off is a person running
-  `uv run jarvis run` and holding a real ≥5-exchange spoken session at the mic.
-- **G1.2** — record the 20 utterances named in `tests/fixtures/stt/devset.json`,
-  transcribe each with whisper.cpp, and fill the `hypothesis` fields; the test
-  then asserts mean WER ≤ 10%.
+No crash (exit 0); whisper transcribed all five utterances correctly.
+
+Note: replies are verbose because the concise voice persona is a Phase 3 item
+(`jarvis.persona`); Phase 1 speaks Claude's full prose. The brain also has
+real Claude memory/tool access — it persisted `user-name.md` during turn 2.
 
 ### Assumptions made
 

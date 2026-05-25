@@ -34,7 +34,7 @@ as the unit of tracking.
 | G0.3 | Voice chosen | One British male Kokoro voice selected, sample recorded | ADR/Outcomes entry + audio sample |
 | G0.4 | CI green on `main` | Pipeline passes; coverage ≥ 80% | GitHub Actions run |
 
-### Phase 1 — Walking skeleton (push-to-talk) · _In progress_
+### Phase 1 — Walking skeleton (push-to-talk) · _Done_
 | ID | Metric | Target | Verification |
 |----|--------|--------|--------------|
 | G1.1 | End-to-end reliability | ≥ 5 consecutive push-to-talk exchanges, no crash | manual script + recorded session |
