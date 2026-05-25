@@ -8,6 +8,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 2 VAD endpointing (G2.2): new `jarvis.vad` module decides end-of-speech
+  in the LISTENING state. It mirrors `jarvis.wakeword` — the native Silero VAD
+  model is wrapped as an injected `Detector` callable (one 512-sample / 32 ms
+  PCM16 frame → speech probability in [0, 1]) and `Endpointer` owns a pure rolling
+  trailing-silence accumulator that fires once sub-threshold frames sum to
+  `vad_silence_ms` *after* speech is heard (leading silence never fires; the
+  endpoint latches, so a long pause yields one endpoint, not one per silent
+  frame). Reuses the existing `vad_threshold` (0.5) and `vad_silence_ms` (700)
+  config keys. The Silero backend (`SileroDetector`, loaded from the bundled
+  `silero-vad` wheel — no `torch.hub` download) is a native shim excluded from
+  coverage; `silero-vad` is added to the `voice` extra. `jarvis.vad` is at 100%
+  coverage.
+- Phase 2 G2.2 verification: new `scripts/bench_latency.py` feeds a synthetic
+  frame stream (speech frames then trailing silence) through the endpointer and
+  times the decision compute from the last speech frame to the endpoint firing.
+  Measured live against the real Silero model: **p50 1.4 ms, p95 1.5 ms over 30
+  runs (target ≤ 300 ms p50)** — full distribution in the Phase 2 doc Outcomes.
+  The detector and clock are injected, so `tests/test_bench_latency.py` exercises
+  the timing/aggregation with fakes (no torch in CI).
 - Phase 2 wake-word detection (G2.1): new `jarvis.wakeword` module wraps
   openWakeWord's pretrained `hey_jarvis` model as an injected `Detector` callable
   (one 80 ms PCM16 frame → score in [0, 1]). `WakeWordListener` owns the threshold

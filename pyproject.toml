@@ -25,6 +25,7 @@ voice = [
     "kokoro>=0.9.4",
     "numpy>=2.4.6",
     "openwakeword>=0.4.0",
+    "silero-vad>=6.0",
     "sounddevice>=0.5.5",
     "soundfile>=0.13.1",
 ]
@@ -65,7 +66,7 @@ disallow_untyped_decorators = false
 # not installed in CI. Its imports live inside `# pragma: no cover` hardware
 # shims; ignore the missing stubs there without relaxing strictness elsewhere.
 [[tool.mypy.overrides]]
-module = ["sounddevice", "numpy", "kokoro", "openwakeword", "openwakeword.*"]
+module = ["sounddevice", "numpy", "kokoro", "openwakeword", "openwakeword.*", "silero_vad", "torch"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
