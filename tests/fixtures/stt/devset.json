@@ -1,22 +1,102 @@
 [
-  {"audio": "utt01.wav", "reference": "what time is it", "hypothesis": null},
-  {"audio": "utt02.wav", "reference": "open the project directory", "hypothesis": null},
-  {"audio": "utt03.wav", "reference": "run the test suite", "hypothesis": null},
-  {"audio": "utt04.wav", "reference": "what is the weather like today", "hypothesis": null},
-  {"audio": "utt05.wav", "reference": "create a new branch called feature login", "hypothesis": null},
-  {"audio": "utt06.wav", "reference": "summarize the last commit", "hypothesis": null},
-  {"audio": "utt07.wav", "reference": "show me the open pull requests", "hypothesis": null},
-  {"audio": "utt08.wav", "reference": "add a docstring to this function", "hypothesis": null},
-  {"audio": "utt09.wav", "reference": "what does this error mean", "hypothesis": null},
-  {"audio": "utt10.wav", "reference": "commit the changes with a message", "hypothesis": null},
-  {"audio": "utt11.wav", "reference": "explain how the cache works", "hypothesis": null},
-  {"audio": "utt12.wav", "reference": "deploy the staging environment", "hypothesis": null},
-  {"audio": "utt13.wav", "reference": "roll back to the previous version", "hypothesis": null},
-  {"audio": "utt14.wav", "reference": "list the failing tests", "hypothesis": null},
-  {"audio": "utt15.wav", "reference": "set the log level to debug", "hypothesis": null},
-  {"audio": "utt16.wav", "reference": "what is my next meeting", "hypothesis": null},
-  {"audio": "utt17.wav", "reference": "search the code base for the word timeout", "hypothesis": null},
-  {"audio": "utt18.wav", "reference": "format the document and save it", "hypothesis": null},
-  {"audio": "utt19.wav", "reference": "remind me to review the proposal tomorrow", "hypothesis": null},
-  {"audio": "utt20.wav", "reference": "stop listening and go to sleep", "hypothesis": null}
+  {
+    "audio": "utt01.wav",
+    "reference": "what time is it",
+    "hypothesis": "That's it."
+  },
+  {
+    "audio": "utt02.wav",
+    "reference": "open the project directory",
+    "hypothesis": "Open the project directory."
+  },
+  {
+    "audio": "utt03.wav",
+    "reference": "run the test suite",
+    "hypothesis": "Run the test suite."
+  },
+  {
+    "audio": "utt04.wav",
+    "reference": "what is the weather like today",
+    "hypothesis": "What is the weather like today?"
+  },
+  {
+    "audio": "utt05.wav",
+    "reference": "create a new branch called feature login",
+    "hypothesis": "Create a new branch called Feature Login."
+  },
+  {
+    "audio": "utt06.wav",
+    "reference": "summarize the last commit",
+    "hypothesis": "Summarize the last commit."
+  },
+  {
+    "audio": "utt07.wav",
+    "reference": "show me the open pull requests",
+    "hypothesis": "Show me the open poll requests."
+  },
+  {
+    "audio": "utt08.wav",
+    "reference": "add a docstring to this function",
+    "hypothesis": "Add a docstring to this function."
+  },
+  {
+    "audio": "utt09.wav",
+    "reference": "what does this error mean",
+    "hypothesis": "What does this error mean?"
+  },
+  {
+    "audio": "utt10.wav",
+    "reference": "commit the changes with a message",
+    "hypothesis": "Commit the changes with the message."
+  },
+  {
+    "audio": "utt11.wav",
+    "reference": "explain how the cache works",
+    "hypothesis": "Explain how the cache works."
+  },
+  {
+    "audio": "utt12.wav",
+    "reference": "deploy the staging environment",
+    "hypothesis": "Display the staging environment."
+  },
+  {
+    "audio": "utt13.wav",
+    "reference": "roll back to the previous version",
+    "hypothesis": "Roll back to the previous version."
+  },
+  {
+    "audio": "utt14.wav",
+    "reference": "list the failing tests",
+    "hypothesis": "List the failing tests."
+  },
+  {
+    "audio": "utt15.wav",
+    "reference": "set the log level to debug",
+    "hypothesis": "Set the log level to debug."
+  },
+  {
+    "audio": "utt16.wav",
+    "reference": "what is my next meeting",
+    "hypothesis": "What is my next meeting?"
+  },
+  {
+    "audio": "utt17.wav",
+    "reference": "search the code base for the word timeout",
+    "hypothesis": "Search the code base for the keyword \"timeout\"."
+  },
+  {
+    "audio": "utt18.wav",
+    "reference": "format the document and save it",
+    "hypothesis": "Format the document and save it."
+  },
+  {
+    "audio": "utt19.wav",
+    "reference": "remind me to review the proposal tomorrow",
+    "hypothesis": "Remind me to review the proposal tomorrow."
+  },
+  {
+    "audio": "utt20.wav",
+    "reference": "stop listening and go to sleep",
+    "hypothesis": "Stop listening and go to sleep."
+  }
 ]
