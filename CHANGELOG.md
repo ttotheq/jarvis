@@ -8,6 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 2 wake-word detection (G2.1): new `jarvis.wakeword` module wraps
+  openWakeWord's pretrained `hey_jarvis` model as an injected `Detector` callable
+  (one 80 ms PCM16 frame → score in [0, 1]). `WakeWordListener` owns the threshold
+  comparison and frame loop and fires on the first score to cross `wake_threshold`
+  (config key already present from scaffolding), short-circuiting so an unbounded
+  live-mic stream is fine. The G2.1 metric (`Accuracy`: true-accept rate +
+  false-accepts-per-30-min) is pure and unit-tested with fakes; `scripts/soak_wakeword.py`
+  is the live 30-min ambient false-accept soak (distinct wakes counted via
+  rising-edge debounce, testable core injected). The openWakeWord backend is a
+  native shim excluded from coverage. Labeled-fixture accuracy and the soak count
+  are recorded in the Phase 2 doc Outcomes as the live verification step.
 - Phase 2 streaming overlap + state machine (G2.4): `jarvis.brain` gains a
   streaming path (`Brain.stream`, `--output-format stream-json
   --include-partial-messages`) that yields assistant text deltas, and a stateful

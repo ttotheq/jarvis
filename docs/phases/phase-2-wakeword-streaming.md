@@ -82,5 +82,39 @@ start over waiting for the full reply, and that window grows with reply length.
 > long-lived `claude`, the revisit ADR-0003 anticipates) would. **G2.3 must be
 > renegotiated against this distribution or re-architected before it is chased.**
 
-_Wake-word false-accept rate and endpoint-latency distribution to be filled in as
-G2.1 / G2.2 land._
+### G2.1 — Wake-word detection ("hey_jarvis") (code landed; live numbers pending)
+
+`jarvis.wakeword` wraps openWakeWord's pretrained `hey_jarvis` model as a
+`Detector` callable (one 80 ms PCM16 frame in, one score in [0, 1] out).
+`WakeWordListener` owns the threshold comparison and frame loop and fires the
+moment a score crosses `wake_threshold` (`jarvis.config`, already present from
+scaffolding — reused, no new key). Because the detector is an injected callable,
+the listener loop and the G2.1 metric (`Accuracy` — true-accept rate and
+false-accepts-per-30-min) are pure and unit-tested with fakes (`tests/test_wakeword.py`):
+fires on a positive clip, silent on a negative/ambient clip, short-circuits on the
+first crossing (so an unbounded live-mic stream is fine), and the rate math. The
+openWakeWord backend (`OpenWakeWordDetector`) is a native shim excluded from
+coverage (ADR-0005). `jarvis.wakeword` is at 100% coverage.
+
+The two **measured targets are verified by a live run**, mirroring how G1.2 (STT
+WER) was handled — the harness ships and CI-green, the numbers are filled from
+hardware:
+
+- **True-accept ≥ 95% over 20 utterances** — `test_labeled_fixtures_meet_targets`
+  runs the real model over `tests/fixtures/wakeword/` (manifest + WAVs) and is
+  *skipped until those recordings exist*. Recording the 20 "hey jarvis" clips +
+  negative clips is the live step.
+- **False-accept ≤ 1 per 30 min ambient** — `scripts/soak_wakeword.py` runs the
+  detector against live mic ambient for 30 min and counts distinct false wakes
+  (rising-edge debounced). Its testable core is covered by
+  `tests/test_soak_wakeword.py`; the live count is recorded here.
+
+| Run | Threshold | True-accept (20 utt.) | False-accept / 30 min | Date |
+|-----|-----------|-----------------------|-----------------------|------|
+| _pending live run_ | 0.5 (default) | — | — | — |
+
+> Run with the voice extra installed (`uv sync --extra voice`) and a microphone:
+> record the fixture set, then `python scripts/soak_wakeword.py --minutes 30`.
+> Tune `JARVIS_WAKE_THRESHOLD` against the soak if false-accepts exceed the budget.
+
+_Endpoint-latency distribution to be filled in as G2.2 lands._
