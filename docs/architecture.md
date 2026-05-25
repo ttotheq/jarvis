@@ -50,7 +50,7 @@ Commit scopes match these names.
 | `jarvis.wakeword` | openWakeWord "hey_jarvis" | Phase 2 |
 | `jarvis.vad` | Silero VAD endpointing | Phase 2 |
 | `jarvis.persona` | Voice-mode system prompt | Phase 3 |
-| `jarvis.loop` | State-machine orchestrator + barge-in | Phase 2–3 |
+| `jarvis.loop` | Turn orchestrator (push-to-talk in P1; state machine + barge-in in 2–3) | Phase 1 |
 
 ## The brain: driving Claude Code
 

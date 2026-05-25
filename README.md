@@ -13,12 +13,12 @@ Everything in the voice path runs on-device (Apple Silicon). The only thing that
 
 ## Status
 
-Pre-Phase-0. This repository currently contains the project skeleton, quality gates, and phase documentation. The voice runtime is built phase-by-phase under [`docs/phases/`](docs/phases/).
+**Phase 1 shipped** — Jarvis holds a real push-to-talk spoken conversation: speak, it transcribes with whisper.cpp, asks Claude Code headlessly (keeping one session across turns), and speaks the reply with Kokoro. The voice runtime is built phase-by-phase under [`docs/phases/`](docs/phases/).
 
 | Phase | Goal | Status |
 |------|------|--------|
-| [0 — Spike & de-risk](docs/phases/phase-0-spike.md) | Prove the local stack installs and Claude round-trips on this Mac | Not started |
-| [1 — Walking skeleton](docs/phases/phase-1-skeleton.md) | Push-to-talk → STT → Claude → TTS, end to end | Not started |
+| [0 — Spike & de-risk](docs/phases/phase-0-spike.md) | Prove the local stack installs and Claude round-trips on this Mac | ✅ Done |
+| [1 — Walking skeleton](docs/phases/phase-1-skeleton.md) | Push-to-talk → STT → Claude → TTS, end to end | ✅ Done |
 | [2 — Wake word + streaming](docs/phases/phase-2-wakeword-streaming.md) | "Hey Jarvis" activation, sub-1.5 s response | Not started |
 | [3 — Jarvis feel](docs/phases/phase-3-jarvis-feel.md) | Barge-in, persona, spoken permission gating | Not started |
 | [4 — Daemon polish](docs/phases/phase-4-daemon.md) | Always-on launchd service, v1.0.0 release | Not started |
@@ -37,7 +37,19 @@ make test               # run the test suite with coverage gate
 make check              # lint + type-check + test (the CI gate, locally)
 ```
 
-Copy `.env.example` to `.env` to override any setting locally; nothing in `.env` is committed.
+### Running the voice loop
+
+The voice runtime needs the native stack. On Apple Silicon:
+
+```bash
+brew install portaudio whisper-cpp espeak-ng     # system libraries
+uv sync --extra voice                            # Kokoro, sounddevice, openWakeWord, …
+# place a whisper model at ~/.cache/jarvis/whisper/ggml-large-v3-turbo.bin
+uv run jarvis doctor                             # verify the stack (exit 0 when ready)
+uv run jarvis run                                # push-to-talk: Enter to talk, Ctrl-C to quit
+```
+
+`jarvis run` defaults to Enter-gated push-to-talk. In a non-interactive shell, set `JARVIS_PTT_SECONDS` (timed turns) and `JARVIS_MAX_TURNS` to run hands-free. Copy `.env.example` to `.env` to override any setting locally; nothing in `.env` is committed.
 
 ## Architecture & decisions
 

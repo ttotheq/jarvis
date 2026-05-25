@@ -26,7 +26,7 @@ opinion.
 Each goal: **ID — metric — target — verification**. IDs are stable; treat them
 as the unit of tracking.
 
-### Phase 0 — Spike & de-risk · _In progress_
+### Phase 0 — Spike & de-risk · _Done_
 | ID | Metric | Target | Verification |
 |----|--------|--------|--------------|
 | G0.1 | Local components available | `jarvis doctor` reports openWakeWord, whisper.cpp, Kokoro, PortAudio all OK → exit 0 | `jarvis doctor` + test with fakes |

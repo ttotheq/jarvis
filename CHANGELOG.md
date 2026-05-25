@@ -17,6 +17,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   empty-reply guard. `jarvis.loop` orchestrates capture → STT → brain → TTS and
   `jarvis run` exposes the push-to-talk loop. Hardware/native edges are injected
   and tested with fakes; `mypy` ignores the optional voice-stack stubs.
+- Voice stack wired in: the `voice` extra pins Kokoro, numpy, openWakeWord,
+  sounddevice, and soundfile (`uv sync --extra voice`). `jarvis run` gains a
+  hands-free timed mode (`JARVIS_PTT_SECONDS`, `JARVIS_MAX_TURNS`, guided spoken
+  prompts) for non-interactive shells, and `scripts/record_devset.py` records and
+  transcribes the STT dev set in one guided session.
 - Phase 0 spike: `jarvis doctor` command (logic in `jarvis.doctor`) that probes
   the local voice stack — PortAudio, whisper.cpp, openWakeWord, Kokoro — and
   exits non-zero naming any missing dependency, with fake-injected tests.
