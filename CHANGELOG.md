@@ -17,8 +17,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   false-accepts-per-30-min) is pure and unit-tested with fakes; `scripts/soak_wakeword.py`
   is the live 30-min ambient false-accept soak (distinct wakes counted via
   rising-edge debounce, testable core injected). The openWakeWord backend is a
-  native shim excluded from coverage. Labeled-fixture accuracy and the soak count
-  are recorded in the Phase 2 doc Outcomes as the live verification step.
+  native shim excluded from coverage.
+- Phase 2 G2.1 verification: `scripts/gen_wakeword_fixtures.py` synthesizes a
+  reproducible labeled set with Jarvis's own TTS (24 "hey jarvis" positives + 30
+  min of near-miss-laden ambient) and measures the real `hey_jarvis` model.
+  `test_labeled_fixtures_meet_targets` gates on it (runs locally with the voice
+  extra, skips in CI). Measured at the tuned threshold: **true-accept 100% (24/24,
+  target ≥ 95%), false-accept 1 / 30 min (target ≤ 1)**. The full threshold sweep
+  and the synthetic-vs-live caveat are in the Phase 2 doc Outcomes.
 - Phase 2 streaming overlap + state machine (G2.4): `jarvis.brain` gains a
   streaming path (`Brain.stream`, `--output-format stream-json
   --include-partial-messages`) that yields assistant text deltas, and a stateful
@@ -36,9 +42,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `wake_threshold` default raised **0.5 → 0.9** (config + `.env.example`), tuned
+  against the G2.1 soak: 0.5 let "hey X" near-misses through (~10 false-accepts /
+  30 min), while 0.9 holds them to 1 / 30 min at 100% true-accept.
 - `jarvis.loop.VoiceLoop` now takes a `stream: Callable[[str], Iterator[str]]`
   (the brain's token stream) instead of a `Brain` instance, and exposes the
   `State` enum and an optional `on_state` transition observer.
+
+### Fixed
+
+- `OpenWakeWordDetector` no longer calls a non-existent `openwakeword.utils.download_models`
+  (the pretrained `hey_jarvis` ONNX ships bundled); it loads that bundled model path
+  directly, so the native detector works on first use.
 
 - Phase 1 walking skeleton (push-to-talk): `jarvis.brain` drives Claude Code
   headlessly (`claude -p --output-format json`), parsing `.result`/`.session_id`

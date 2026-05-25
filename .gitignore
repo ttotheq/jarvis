@@ -33,6 +33,9 @@ models/
 
 # Generated audio artifacts (voice-audition samples — regenerable via Kokoro)
 samples/
+# Synthetic wake-word fixtures (regenerable via scripts/gen_wakeword_fixtures.py)
+tests/fixtures/wakeword/*.wav
+tests/fixtures/wakeword/manifest.json
 
 # OS / editor
 .DS_Store

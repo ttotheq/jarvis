@@ -51,7 +51,10 @@ class Settings(BaseSettings):
 
     # --- Wake word ---------------------------------------------------------
     wake_word: str = "hey_jarvis"
-    wake_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    # Tuned against the G2.1 soak (docs/phases/phase-2-wakeword-streaming.md): 0.9
+    # holds false-accepts within budget against near-miss phrases while keeping
+    # 100% true-accept. Lower it if real-voice true-accept proves marginal.
+    wake_threshold: float = Field(default=0.9, ge=0.0, le=1.0)
 
     # --- Voice activity detection / endpointing ---------------------------
     vad_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
