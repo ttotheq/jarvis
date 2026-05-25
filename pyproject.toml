@@ -17,11 +17,17 @@ dependencies = [
 jarvis = "jarvis.cli:app"
 
 [project.optional-dependencies]
-# The native voice stack (openWakeWord, Silero VAD, whisper.cpp bindings,
-# Kokoro) is introduced phase-by-phase. Keeping it optional means the core
-# package and test suite install fast and CI stays green before the heavy
-# audio/ML wheels are wired in. See docs/phases/.
-voice = []
+# The native voice stack. Kept as an optional extra so the core package and CI
+# install fast (these pull torch via Kokoro); install with `uv sync --extra
+# voice`. whisper.cpp itself is a system binary (brew install whisper-cpp), not
+# a wheel. openWakeWord is wired in now though it is first used in Phase 2.
+voice = [
+    "kokoro>=0.9.4",
+    "numpy>=2.4.6",
+    "openwakeword>=0.4.0",
+    "sounddevice>=0.5.5",
+    "soundfile>=0.13.1",
+]
 
 [dependency-groups]
 dev = [
@@ -54,6 +60,13 @@ files = ["src"]
 # typer relies on decorators whose return type it does not fully annotate;
 # relaxing this one rule keeps the rest of strict mode intact.
 disallow_untyped_decorators = false
+
+# The native voice stack (the optional `voice` extra) ships no type stubs and is
+# not installed in CI. Its imports live inside `# pragma: no cover` hardware
+# shims; ignore the missing stubs there without relaxing strictness elsewhere.
+[[tool.mypy.overrides]]
+module = ["sounddevice", "numpy", "kokoro", "openwakeword"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 addopts = "-ra -q --cov=jarvis --cov-report=term-missing --cov-fail-under=80"

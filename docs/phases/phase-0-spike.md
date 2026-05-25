@@ -53,22 +53,23 @@ Outcomes; `make check` and CI green.
 
 `jarvis doctor` (in `jarvis.cli`, logic in `jarvis.doctor`) probes the four
 voice-stack dependencies and exits non-zero naming any that are missing, exit 0
-when all present. On this machine, none of the native components are installed
-yet, so it correctly reports:
+when all present. The stack was installed during the Phase 1 setup step
+(`brew install portaudio whisper-cpp espeak-ng` + the `voice` extra wheels), so
+it now reports:
 
 ```
 Jarvis environment check:
-  [MISS] PortAudio     not found — `brew install portaudio`
-  [MISS] whisper.cpp   not found — build whisper.cpp and put its CLI on PATH
-  [MISS] openWakeWord  not found — `pip install openwakeword`
-  [MISS] Kokoro        not found — `pip install kokoro`
+  [OK ] PortAudio     audio backend available
+  [OK ] whisper.cpp   found (whisper-cli)
+  [OK ] openWakeWord  importable
+  [OK ] Kokoro        importable
 
-Missing: PortAudio, whisper.cpp, openWakeWord, Kokoro
+All voice-stack dependencies present.
 ```
 
-The all-present (exit 0) and any-missing (exit 1) paths are covered by
-`tests/test_doctor.py` with injected fake probes, so the gate is verified
-without the native libraries installed.
+The all-present (exit 0) and any-missing (exit 1) paths are also covered by
+`tests/test_doctor.py` with injected fake probes, so the gate stays verified in
+CI without the native libraries.
 
 ### G0.2 — Claude round-trip (time-to-first-token)
 
@@ -94,11 +95,12 @@ timing and aggregation logic with a fake and never makes a network call.
 
 ### G0.3 — Voice chosen
 
-Default left at **`bm_george`** (British male) in `.env.example` /
-`jarvis.config`. A real audition across `bm_george` / `bm_lewis` / `bm_fable`
-requires Kokoro installed, which it is not yet (see G0.1); the listening test is
-deferred to the Phase 1 install step and the choice is revisitable via
-`JARVIS_TTS_VOICE` with no code change.
+**Chosen: `bm_george`** (British male). With Kokoro installed, audition samples
+for `bm_george` / `bm_lewis` / `bm_fable` were synthesized through `jarvis.tts`
+to `samples/voice-audition/*.wav` (the same line in each voice) and auditioned
+on this Mac; `bm_george` was confirmed as the default. It remains the default in
+`.env.example` / `jarvis.config` and is revisitable via `JARVIS_TTS_VOICE` with
+no code change. **G0.3 met.**
 
 ### G0.4 — CI green
 

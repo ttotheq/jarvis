@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     claude_binary: str = "claude"
     permission_mode: PermissionMode = PermissionMode.accept_edits
 
+    # --- Push-to-talk runtime ---------------------------------------------
+    # When ptt_seconds is set, `jarvis run` records a fixed window per turn
+    # (hands-free, spoken cue) instead of Enter-gated push-to-talk — useful in
+    # non-interactive shells. max_turns stops the loop after N turns (None runs
+    # until Ctrl-C).
+    ptt_seconds: float | None = Field(default=None, gt=0)
+    max_turns: int | None = Field(default=None, gt=0)
+
     # --- Observability -----------------------------------------------------
     log_level: str = "INFO"
 

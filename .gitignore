@@ -31,6 +31,9 @@ htmlcov/
 models/
 .cache/
 
+# Generated audio artifacts (voice-audition samples — regenerable via Kokoro)
+samples/
+
 # OS / editor
 .DS_Store
 *.swp
