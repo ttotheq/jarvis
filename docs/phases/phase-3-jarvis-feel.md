@@ -12,8 +12,9 @@
   stop") cancels TTS playback and any in-flight `claude` task, returning to
   `LISTENING`.
 - `jarvis.persona` — the voice-mode system prompt injected via
-  `--append-system-prompt` (see `docs/voice-persona.md`): concise, British
-  butler register, never reads code aloud.
+  `--append-system-prompt` (see `docs/voice-persona.md`): concise, in an advisor
+  register (Tony Stark's J.A.R.V.I.S., not a butler), proactive with the
+  decision-relevant point, never reads code aloud.
 - **Spoken permission gating** — a Claude Code `PreToolUse` hook routes risky
   tool calls (e.g. `rm`, `git push`, destructive bash) to a spoken confirmation
   before they execute.
