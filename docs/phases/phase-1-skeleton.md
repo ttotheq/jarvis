@@ -85,7 +85,7 @@ coverage ≥ 80%; docs + CHANGELOG updated.
 | ID | Status | Evidence |
 |----|--------|----------|
 | G1.1 | **Cascade verified live; human-mic session pending** | `tests/test_loop.py` runs 5 exchanges with fakes. A synthetic end-to-end dry run (Kokoro "voice" → real whisper.cpp → real `claude -p` → real Kokoro → sounddevice playback) ran 5 consecutive turns with no crash, including live `--resume` (turn 3 recalled the fact from turn 1). Only a real person at the mic remains. |
-| G1.2 | **Pipeline verified; human dev set pending** | `word_error_rate()` covered by `tests/test_stt_accuracy.py`; the live STT path is proven (Kokoro→whisper.cpp round-trip, WER 0.0). The 20-utterance assertion skips until the human recordings populate the manifest. |
+| G1.2 | **Met** | 20 human utterances recorded and transcribed by whisper.cpp large-v3-turbo; **mean WER 0.073 (7.3%)**, under the 10% target. `tests/test_stt_accuracy.py::test_devset_wer_under_threshold` now asserts (no longer skips). |
 | G1.3 | **Met** | `tests/test_brain_extraction.py` — code/tool blocks 100% stripped on the fixture. |
 | G1.4 | **Met** | `tests/test_brain_session.py` — turns 2+ pass `--resume <session_id>` from turn 1. |
 | G1.5 | **Met** | Coverage 98.8% (≥ 80%). |
