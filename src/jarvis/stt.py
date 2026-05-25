@@ -68,6 +68,15 @@ class WhisperCppTranscriber:  # pragma: no cover - requires the whisper.cpp bina
         if binary is None:
             raise RuntimeError("whisper.cpp CLI not found on PATH (run `jarvis doctor`)")
 
+        # whisper-cli's -m takes a GGML model file, not a model name: resolve
+        # <stt_model_dir>/ggml-<stt_model>.bin.
+        model_path = self._settings.stt_model_dir / f"ggml-{self._settings.stt_model}.bin"
+        if not model_path.exists():
+            raise RuntimeError(
+                f"whisper model not found at {model_path} — download "
+                f"ggml-{self._settings.stt_model}.bin into {self._settings.stt_model_dir}"
+            )
+
         with tempfile.TemporaryDirectory() as tmp:
             wav_path = Path(tmp) / "clip.wav"
             with wave.open(str(wav_path), "wb") as wav:
@@ -76,7 +85,7 @@ class WhisperCppTranscriber:  # pragma: no cover - requires the whisper.cpp bina
                 wav.setframerate(clip.sample_rate)
                 wav.writeframes(clip.samples)
             completed = subprocess.run(
-                [binary, "-m", str(self._settings.stt_model), "-f", str(wav_path), "-nt"],
+                [binary, "-m", str(model_path), "-f", str(wav_path), "-nt"],
                 capture_output=True,
                 text=True,
                 check=True,
