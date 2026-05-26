@@ -137,7 +137,7 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
     tests/test_loop.py; this wiring is the manual end-to-end check (G1.1).
     """
     from jarvis.brain import Brain
-    from jarvis.loop import VoiceLoop
+    from jarvis.loop import VoiceLoop, build_default_barge_in_watcher
     from jarvis.stt import WhisperCppTranscriber
     from jarvis.tts import build_default_speaker, build_default_synthesizer
 
@@ -154,6 +154,7 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
         stream=Brain(settings).stream,
         synthesize=build_default_synthesizer(),
         speaker=build_default_speaker(),
+        watch_barge_in=build_default_barge_in_watcher(),
     )
     typer.echo("Jarvis is listening. Press Ctrl-C to stop.")
     try:

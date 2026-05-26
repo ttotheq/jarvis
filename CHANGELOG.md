@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 3 barge-in (G3.1): the `SPEAKING` state is now cancellable. The `Speaker`
+  protocol gains `stop()` (real impl `sd.stop()`) so the consumer can abort a clip
+  *mid-utterance*, and `jarvis.vad` gains `OnsetDetector` — the rising-edge
+  counterpart to G2.2's trailing-silence `Endpointer`, reusing the same injected
+  Silero `Detector` seam but firing on the first frame at/above `vad_threshold`
+  (latched, one onset per utterance). `jarvis.loop` runs an injected onset watcher
+  on the hot mic during `SPEAKING`; on speech onset it sets a cancel flag and
+  aborts playback, the consumer stops, and the producer breaks its token loop and
+  **closes the generator** — in `Brain.stream` that `GeneratorExit` terminates the
+  `claude` child, so no further sentences are spoken — then the machine returns to
+  `LISTENING` (not `IDLE`). Barge-in latency is bounded by `stop()` rather than the
+  sentence length; measured onset → playback-halted ≤ 300 ms off an injected clock
+  (`tests/test_barge_in.py`), with the live watcher (`build_default_barge_in_watcher`)
+  wired into `jarvis run`. The mic-hears-itself echo case (no AEC yet) is noted as
+  a known limitation in the Phase 3 doc Outcomes.
 - Phase 2 time-to-first-audio measurement (G2.3): `scripts/bench_latency.py`
   gains a `--mode ttfa` path that composes the real first-audio cascade behind
   injected per-stage timers (the `vad_silence_ms` hangover → whisper.cpp STT →
@@ -79,6 +94,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The `jarvis.audio.Speaker` protocol now requires a `stop()` method (alongside
+  `play`) so playback can be aborted mid-clip for barge-in; `jarvis.loop.VoiceLoop`
+  gains optional `watch_barge_in` and `clock` fields and `Turn` gains `barged_in` /
+  `barge_in_latency_s`. All additions are backward-compatible defaults — a loop
+  built without a watcher behaves exactly as in Phase 2.
 - `wake_threshold` default raised **0.5 → 0.9** (config + `.env.example`), tuned
   against the G2.1 soak: 0.5 let "hey X" near-misses through (~10 false-accepts /
   30 min), while 0.9 holds them to 1 / 30 min at 100% true-accept.

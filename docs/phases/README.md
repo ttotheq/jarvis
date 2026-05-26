@@ -52,7 +52,7 @@ as the unit of tracking.
 | G2.4 | Streaming overlap | First sentence spoken before full Claude response completes | `tests/test_loop_streaming.py` |
 | G2.5 | Coverage | ≥ 80% | CI |
 
-### Phase 3 — Jarvis feel · _Not started_
+### Phase 3 — Jarvis feel · _In progress_
 | ID | Metric | Target | Verification |
 |----|--------|--------|--------------|
 | G3.1 | Barge-in latency | Playback stops ≤ 300 ms after user speech onset; in-flight task cancelled | `tests/test_barge_in.py` |

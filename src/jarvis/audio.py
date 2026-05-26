@@ -40,9 +40,15 @@ class Clip:
 
 
 class Speaker(Protocol):
-    """Anything that can play a clip through an output device."""
+    """Anything that can play a clip through an output device.
+
+    ``stop`` aborts playback in progress; it is what makes the SPEAKING state
+    cancellable for barge-in (G3.1) — the consumer can halt a clip mid-utterance
+    rather than waiting for the sentence to finish.
+    """
 
     def play(self, clip: Clip) -> None: ...
+    def stop(self) -> None: ...
 
 
 def record(source: FrameSource, stop: Callable[[], bool], sample_rate: int) -> Clip:
@@ -68,6 +74,11 @@ class SoundDeviceSpeaker:  # pragma: no cover - requires PortAudio + a real devi
         audio = np.frombuffer(clip.samples, dtype=np.int16)
         sd.play(audio, samplerate=clip.sample_rate)
         sd.wait()
+
+    def stop(self) -> None:
+        import sounddevice as sd
+
+        sd.stop()  # aborts the in-flight sd.play/sd.wait so barge-in can interrupt
 
 
 def make_sounddevice_source(  # pragma: no cover - requires PortAudio + a real device
