@@ -1,9 +1,10 @@
 # Phase 3 — Jarvis feel
 
-- **Status:** Goals met — G3.1 (barge-in), G3.2 (persona), G3.3 (permission
-  gating) done; coverage 99% (G3.4). Remaining: the live end-to-end demo recording
-  (Definition of Done) — the unit contracts are proven; the audio path is wired
-  manually.
+- **Status:** Complete — G3.1 (barge-in), G3.2 (persona), G3.3 (permission gating)
+  done; coverage 99% (G3.4). Live end-to-end demo recorded 2026-05-25
+  (`phase-3-demo.md`): the spoken gate and in-character replies were demonstrated
+  audibly; the demo also found and fixed a real PreToolUse blocking bug (see G3.3
+  Outcomes) and confirmed a live barge-in limitation (no AEC; deferred).
 - **Milestone:** Phase 3
 - **Objective:** Turn a working voice loop into something that feels like Jarvis:
   you can interrupt him, he's concise and in-character, and he asks before doing
@@ -188,7 +189,17 @@ reset --hard` cases (plus `git clean`, `git branch -D`, `sudo`, `dd`, compound
 chains), with the four required write-first tests green: classifier flags
 destructive vs. read-only; hook blocks until confirmed (`confirm`→False emits deny,
 →True allow, `confirm` called first); hook passes safe through without asking; hook
-reads stdin and emits the `permissionDecision` JSON.
+reads stdin and emits the decision.
+
+**Emission protocol — corrected by the live demo.** The first live run exposed a
+defect CI could never catch: `claude` 2.1.150 does **not** block a tool when a
+`PreToolUse` hook emits `permissionDecision: "deny"` as stdout JSON — the tool runs
+anyway. The block Claude Code actually honors is the **exit-code protocol**: the
+reason on stderr and **exit 2**. `main` now routes a denial through exit 2 + stderr
+while an allow rides the documented stdout JSON at exit 0 (`decide` stays pure and
+still returns the documented decision dict). Verified end to end: answering "no"
+leaves the file in place and `claude` stands down; "yes" lets the `rm` run. Full
+account in `phase-3-demo.md`.
 
 **Integration (manual).** Register the hook in the `settings.json` the spawned
 `claude` reads (project `.claude/settings.json` or user settings), scoped to the
@@ -210,8 +221,8 @@ Bash matcher so read-only tools never reach it:
 ```
 
 With `confirm` unset, `main` builds the live audio `confirm`, so the spawned hook
-speaks the question and hears the answer. This registration plus the end-to-end
-demo recording (Definition of Done) is the remaining manual step.
+speaks the question and hears the answer. This registration was exercised in the
+live demo (`phase-3-demo.md`), which gated a real `claude` `rm` call audibly.
 
 **Caveats / scope.** Classification is an explicit destructive-verb allow-list, not
 a sandbox: a novel destructive command outside the set (e.g. an obscure CLI, an
