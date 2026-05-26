@@ -194,12 +194,13 @@ exposes `jarvis service install | uninstall | status`.
   removed the plist; a follow-up `status` returned `not loaded` (exit 1), the
   plist was gone, and `launchctl print` no longer knew the service. A second
   `uninstall` was a clean no-op (idempotent).
-- **Known gap (expected):** `jarvis run` is still the Enter-gated developer
-  harness, so under launchd (no TTY) the launched process loaded the voice stack
-  and then exited (`Aborted.` in the err log) rather than holding a session. With
-  `KeepAlive {Crashed: true}` that clean exit correctly did **not** trigger a
-  relaunch. Wiring the always-on wake-word loop as the launchd entry point is the
-  remaining Phase 4 work; G4.1 delivers the service mechanism it plugs into.
+- **Known gap at G4.1 — since closed.** At the time of this G4.1 test `jarvis run`
+  was still the Enter-gated developer harness, so under launchd (no TTY) the
+  launched process loaded the voice stack and then exited (`Aborted.` in the err
+  log) rather than holding a session. With `KeepAlive {Crashed: true}` that clean
+  exit correctly did **not** trigger a relaunch. G4.1 delivered the service
+  mechanism; the **always-on wake-word runtime** (next section) then became the
+  headless entry point it runs, closing this gap.
 - **Manual leg for Ty:** the full **logout/login survival** check cannot be
   performed autonomously. The mechanism is in place and proven loaded with
   `RunAtLoad: true`; confirm survival by `jarvis service install`, log out and
