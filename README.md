@@ -79,9 +79,8 @@ uv run jarvis service uninstall   # unload and remove the plist
 The generated plist resolves the venv interpreter, project directory, and `PATH`
 **at install time** — no paths are hard-coded — and is config-driven via
 `JARVIS_SERVICE_LABEL` and `JARVIS_SERVICE_LOG_DIR`. Logs default to
-`~/Library/Logs/jarvis/`. (`jarvis run` is still the Enter-gated dev harness, so
-under the service it currently exits for lack of a TTY; the always-on wake-word
-entry point is the remaining Phase 4 step.)
+`~/Library/Logs/jarvis/`. The service runs `jarvis run` in its default
+`wake_word` mode, so it listens for "hey jarvis" headlessly with no keyboard.
 
 ## Architecture & decisions
 
