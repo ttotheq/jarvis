@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from jarvis.audio import Clip, SoundDeviceSpeaker, Speaker
+from jarvis.audio import Clip, SoundDeviceStreamingSpeaker, Speaker
 from jarvis.config import Settings, get_settings
 
 #: A synthesizer: turns reply text into a playable clip.
@@ -58,5 +58,6 @@ def build_default_synthesizer() -> Synthesizer:  # pragma: no cover - native
     return KokoroSynthesizer()
 
 
-def build_default_speaker() -> Speaker:  # pragma: no cover - native
-    return SoundDeviceSpeaker()
+def build_default_speaker() -> SoundDeviceStreamingSpeaker:  # pragma: no cover - native
+    """The persistent-stream speaker: gapless multi-sentence playback (G4.6)."""
+    return SoundDeviceStreamingSpeaker(device=get_settings().output_device)

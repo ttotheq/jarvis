@@ -16,7 +16,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from queue import Empty, Full, Queue
-from typing import Protocol
+from typing import Any, Protocol
 
 #: A frame source: returns the next chunk of PCM16 bytes from the input device.
 FrameSource = Callable[[], bytes]
@@ -109,21 +109,55 @@ def resample_mono_pcm16(samples: bytes, input_rate: int, output_rate: int) -> by
     return resampled.tobytes()
 
 
-class SoundDeviceSpeaker:  # pragma: no cover - requires PortAudio + a real device
-    """Plays clips through the default output device via sounddevice."""
+class SoundDeviceStreamingSpeaker:  # pragma: no cover - requires PortAudio + a real device
+    """Plays clips gaplessly through one persistent output stream.
+
+    Opening a fresh ``sd.play`` per sentence renegotiates the output stream at
+    each boundary, which over Bluetooth clicks and swallows sentence-starts.
+    Instead this holds a single ``RawOutputStream`` open across the session and
+    writes each clip into it, so back-to-back sentences play as one continuous
+    utterance. ``wait`` drains buffered audio at end of turn (PortAudio ``stop``
+    finishes pending buffers); ``stop`` aborts it immediately for barge-in
+    (PortAudio ``abort`` discards them). The stream is opened lazily on the first
+    clip and reused; ``close`` tears it down.
+    """
+
+    def __init__(self, device: str | int | None = None) -> None:
+        self._device = device
+        self._stream: Any = None
+
+    def _ensure_started(self, sample_rate: int) -> None:
+        import sounddevice as sd
+
+        if self._stream is None:
+            self._stream = sd.RawOutputStream(
+                samplerate=sample_rate,
+                channels=1,
+                dtype="int16",
+                device=self._device,
+            )
+            self._stream.start()
+        elif self._stream.stopped:
+            self._stream.start()
 
     def play(self, clip: Clip) -> None:
-        import numpy as np
-        import sounddevice as sd
+        self._ensure_started(clip.sample_rate)
+        self._stream.write(clip.samples)
 
-        audio = np.frombuffer(clip.samples, dtype=np.int16)
-        sd.play(audio, samplerate=clip.sample_rate)
-        sd.wait()
+    def wait(self) -> None:
+        # Drain: PortAudio stop() returns only once buffered audio has played.
+        if self._stream is not None and not self._stream.stopped:
+            self._stream.stop()
 
     def stop(self) -> None:
-        import sounddevice as sd
+        # Barge-in: abort() discards buffered audio immediately, bounding latency.
+        if self._stream is not None and not self._stream.stopped:
+            self._stream.abort()
 
-        sd.stop()  # aborts the in-flight sd.play/sd.wait so barge-in can interrupt
+    def close(self) -> None:
+        if self._stream is not None:
+            self._stream.close()
+            self._stream = None
 
 
 class SoundDeviceMicrophone:  # pragma: no cover - requires PortAudio + a real device

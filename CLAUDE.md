@@ -41,7 +41,7 @@ Never push without a green `make check`. CI (`.github/workflows/ci.yml`) runs on
 
 ## Architecture
 
-The orchestrator (`jarvis.loop.VoiceLoop`) is a state machine: `IDLE → LISTENING → THINKING → SPEAKING`. Streaming overlaps THINKING and SPEAKING — a producer thread segments the `claude` token stream into sentences onto a queue while a consumer thread speaks them, so TTS starts on the *first complete sentence* rather than the full reply.
+The orchestrator (`jarvis.loop.VoiceLoop`) is a state machine: `IDLE → LISTENING → THINKING → SPEAKING`. Streaming overlaps THINKING and SPEAKING as a three-stage pipeline (`tokens → sentences → audio → speaker`): a producer segments the `claude` token stream into sentences, a synth thread renders sentence N+1 while N plays (no inter-sentence gap, G4.6), and the consumer writes clips to one persistent output stream (`SoundDeviceStreamingSpeaker` — gapless, drained on clean finish, aborted on barge-in). TTS starts on the *first complete sentence* rather than the full reply.
 
 `jarvis run` now defaults to the **always-on wake-word runtime** (`run_mode=wake_word`): a turn opens at IDLE and blocks in `wait_for_wake_phrase` until "hey jarvis", then `capture_until_endpoint` records LISTENING until Silero VAD detects end-of-speech (or `listen_max_seconds`). It needs no keyboard, so it runs headless under `jarvis service`. `VoiceLoop.wait_for_wake` is the optional seam (None → the old developer harness, opening at LISTENING). `JARVIS_RUN_MODE=push_to_talk|timed` selects the Enter-gated / fixed-window harness modes.
 
@@ -51,7 +51,7 @@ Module map — **Conventional Commit scopes match these module names** (`feat(st
 |--------|----------------|
 | `jarvis.config` | Twelve-factor `Settings` (pydantic-settings); the single home for every tunable |
 | `jarvis.cli` | Typer CLI (`version`, `config`, `doctor`, `run`, `service`) |
-| `jarvis.audio` | Mic capture + playback; persistent shared mic + PCM16 resampling for live barge-in |
+| `jarvis.audio` | Mic capture + playback; persistent shared mic + PCM16 resampling for barge-in; persistent output stream (`SoundDeviceStreamingSpeaker`) for gapless playback |
 | `jarvis.stt` | whisper.cpp transcription |
 | `jarvis.brain` | `claude -p` subprocess, session resume, speakable-text extraction |
 | `jarvis.tts` | Kokoro synthesis (generic British male voice) |

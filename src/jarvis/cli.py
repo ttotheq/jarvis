@@ -204,6 +204,7 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
         block_frames=block_frames,
         device=settings.input_device,
     )
+    speaker = build_default_speaker()
     try:
         wait_for_wake: Callable[[], None] | None = None
         if settings.run_mode is RunMode.wake_word:
@@ -239,7 +240,7 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
             transcribe=WhisperCppTranscriber(settings),
             stream=Brain(settings).stream,
             synthesize=build_default_synthesizer(),
-            speaker=build_default_speaker(),
+            speaker=speaker,
             wait_for_wake=wait_for_wake,
             watch_barge_in=build_default_barge_in_watcher(
                 microphone.read,
@@ -258,5 +259,6 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
             return
     finally:
         microphone.close()
+        speaker.close()  # tear down the persistent output stream (G4.6)
     for i, turn in enumerate(turns, 1):
         typer.echo(f"[{i}] you: {turn.transcript!r}  jarvis: {turn.reply!r}")

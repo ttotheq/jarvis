@@ -12,6 +12,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   push-to-talk). Push-to-talk and timed turns remain available via
   `JARVIS_RUN_MODE`. `JARVIS_PTT_SECONDS` no longer implicitly selects timed mode
   — set `JARVIS_RUN_MODE=timed` explicitly (it then sizes the per-turn window).
+- TTS playback now uses a persistent output stream (`SoundDeviceStreamingSpeaker`)
+  instead of a fresh `sd.play` per sentence; `build_default_speaker` returns it and
+  the dead per-clip `SoundDeviceSpeaker` was removed (G4.6).
 
 - Documentation/status alignment after Phase 3: the repo-level docs now reflect
   that **Phase 3 is done**, **G4.0 is done**, Phase 4 is now in progress, the
@@ -56,6 +59,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 4 smooth streaming playback (G4.6): multi-sentence replies now play as one
+  continuous utterance. The live always-on check exposed two stacked artifacts —
+  boundary **clicks** + clipped sentence-starts (a fresh `sd.play` per sentence made
+  Bluetooth A2DP renegotiate at every boundary) and inter-sentence **gaps**
+  (synthesis was serialized with playback). New `jarvis.audio.SoundDeviceStreamingSpeaker`
+  holds one persistent `RawOutputStream` open for the session and writes each clip into
+  it (`wait()` drains at end of turn via PortAudio `stop`; `stop()` aborts via `abort`
+  for barge-in; `close()` tears down) — gapless, no renegotiation. `jarvis.loop._think_and_speak`
+  becomes a three-stage pipeline (`tokens → sentences → audio → speaker`) with a synth
+  thread rendering sentence N+1 while N plays, eliminating the gap; the consumer drains
+  on a clean finish and aborts on barge-in. `jarvis.cli.run` builds the streaming speaker
+  once and closes it on exit (symmetric with the persistent mic). Write-first tests in
+  `tests/test_playback_pipeline.py` (synth-ahead, drain-on-finish, abort-on-barge-in,
+  synth-error propagation); the G2.4 overlap and G3.1 barge-in/latency contracts are
+  unchanged. **Verified live (2026-05-26):** a three-sentence reply that previously
+  clicked and stalled now plays gaplessly on the built-in speakers.
 - Phase 4 always-on runtime: `jarvis run` now defaults to a **wake-word** mode that
   makes the cascade self-sustaining and headless — it parks at `IDLE` until
   "hey jarvis", endpoints the utterance with Silero VAD, replies, and returns to

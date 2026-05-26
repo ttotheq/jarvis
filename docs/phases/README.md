@@ -61,7 +61,7 @@ as the unit of tracking.
 | G3.3 | Permission gating | 100% of destructive tool calls trigger spoken confirmation before running | `tests/test_permission_gate.py` |
 | G3.4 | Coverage | ≥ 85% | CI |
 
-### Phase 4 — Daemon polish · _In progress (G4.0, G4.1, always-on runtime done)_
+### Phase 4 — Daemon polish · _In progress (G4.0, G4.1, always-on runtime, G4.6 done)_
 | ID | Metric | Target | Verification |
 |----|--------|--------|--------------|
 | G4.0 | Pre-Phase 4: wake-phrase-gated barge-in (carryover) | Only "hey jarvis" interrupts; ambient/other-voice/self does not; no CoreAudio `-50` during SPEAKING | `tests/test_barge_in.py` + live shared-stream probe |
@@ -70,6 +70,7 @@ as the unit of tracking.
 | G4.3 | Stability soak | 1-hour idle: 0 crashes, memory growth ≤ 50 MB | soak run, recorded |
 | G4.4 | Config-driven | Voice/model/permission mode changeable via `.env` only, no code edits | `tests/test_config_drives_runtime.py` |
 | G4.5 | Release | `v1.0.0` tagged; CHANGELOG finalized; coverage ≥ 85% | release workflow run |
+| G4.6 | Smooth streaming playback | Multi-sentence replies play gaplessly — no inter-sentence gaps, boundary clicks, or clipped starts | `tests/test_playback_pipeline.py` + live multi-sentence check |
 
 See each phase file for scope, deliverables, the write-first test plan, and the
 Outcomes section (filled in as work lands).
