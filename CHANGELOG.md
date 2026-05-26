@@ -6,8 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Permission gate (G3.3) blocking protocol: the live end-to-end demo exposed that
+  `claude` 2.1.150 does **not** block a tool when a `PreToolUse` hook emits
+  `permissionDecision: "deny"` as stdout JSON — the tool runs anyway. `main` now
+  delivers a denial via the **exit-code protocol** (reason on stderr, exit 2, which
+  Claude Code honors) and emits an allow as the documented stdout JSON at exit 0;
+  `decide` stays pure and still returns the documented decision dict. Verified end
+  to end against real `claude` (answering "no" blocks the `rm` and the file
+  survives; "yes" lets it run). New `tests/test_permission_gate.py` cases pin the
+  exit-2/stderr deny and stdout-JSON allow emission.
+
 ### Added
 
+- Phase 3 live end-to-end demo (`docs/phases/phase-3-demo.md`): the Definition-of-
+  Done recording. The spoken permission gate (G3.3) and in-character replies (G3.2)
+  were demonstrated audibly against the real `claude` brain + Kokoro + whisper.cpp;
+  the run found and fixed the deny-blocking bug above. Barge-in (G3.1) fired within
+  budget but self-triggers acoustically on this hardware (no echo cancellation + a
+  CoreAudio `-50` from concurrent input/output streams) — recorded as a confirmed
+  live limitation with the fix deferred past Phase 3.
 - Phase 3 spoken permission gating (G3.3): new `jarvis.permissions` module is a
   Claude Code `PreToolUse` hook that routes destructive tool calls to a spoken
   yes/no confirmation **before** they run, making the persona's "confirm

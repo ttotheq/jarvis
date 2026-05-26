@@ -143,19 +143,38 @@ def test_hook_passes_through_safe() -> None:
     assert confirm.questions == []  # never asked
 
 
-def test_hook_reads_stdin_emits_decision() -> None:
-    """The entrypoint parses a PreToolUse JSON payload from stdin and writes the decision."""
+def test_hook_reads_stdin_blocks_denied_via_exit_code() -> None:
+    """Entrypoint parses the stdin payload; a denied call blocks via exit 2 + stderr.
+
+    Verified live: Claude Code 2.1.150 does NOT block on a stdout ``deny`` JSON, so
+    a denial must travel through the exit-code protocol (exit 2, reason on stderr).
+    """
     stdin = io.StringIO(json.dumps(_payload("Bash", command="git push origin main")))
-    stdout = io.StringIO()
+    stdout, stderr = io.StringIO(), io.StringIO()
     confirm = _Confirm(verdict=False)
 
-    code = main(stdin=stdin, stdout=stdout, confirm=confirm)
+    code = main(stdin=stdin, stdout=stdout, stderr=stderr, confirm=confirm)
+
+    assert code == 2  # exit 2 is the block Claude Code honors
+    assert "confirmation" in stderr.getvalue().lower()  # the reason is fed back to Claude
+    assert stdout.getvalue() == ""  # nothing on stdout for a blocked call
+    assert len(confirm.questions) == 1  # the gate spoke before deciding
+
+
+def test_main_emits_allow_json_when_confirmed() -> None:
+    """A confirmed destructive call is allowed via the documented stdout JSON at exit 0."""
+    stdin = io.StringIO(json.dumps(_payload("Bash", command="rm -rf build")))
+    stdout, stderr = io.StringIO(), io.StringIO()
+    confirm = _Confirm(verdict=True)
+
+    code = main(stdin=stdin, stdout=stdout, stderr=stderr, confirm=confirm)
 
     assert code == 0
     written = json.loads(stdout.getvalue())
-    assert written["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert written["hookSpecificOutput"]["permissionDecision"] == "allow"
     assert written["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
-    assert len(confirm.questions) == 1  # the gate spoke before deciding
+    assert stderr.getvalue() == ""
+    assert len(confirm.questions) == 1  # spoke before allowing
 
 
 def test_main_allows_safe_call_from_stdin() -> None:

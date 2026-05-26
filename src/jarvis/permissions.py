@@ -18,8 +18,17 @@ The design splits cleanly along the cross-process boundary:
 - **Pure and CI-proven:** :func:`is_destructive` classifies a tool call, and
   :func:`decide` turns a payload plus an injected ``confirm`` seam into the Claude
   Code ``PreToolUse`` decision (``hookSpecificOutput.permissionDecision`` =
-  ``allow`` / ``deny``). :func:`main` parses stdin and emits stdout. None of these
-  speak, record, or spawn anything.
+  ``allow`` / ``deny``). :func:`main` parses stdin and emits the verdict. None of
+  these speak, record, or spawn anything.
+
+Emission channel (verified live, not guessed). Claude Code 2.1.150 does **not**
+block a tool when a ``PreToolUse`` hook emits ``permissionDecision: "deny"`` as
+stdout JSON — the tool still runs (confirmed end to end on 2026-05-25). The block
+Claude Code honors is the **exit-code protocol**: exit 2 with the reason on stderr.
+So :func:`main` routes a denial through exit 2 + stderr while an allow rides the
+documented stdout JSON at exit 0. :func:`decide` stays pure and still returns the
+documented decision dict (fully unit-tested); :func:`main` is the thin translation
+to the channel that works.
 - **Live and manually exercised:** :func:`build_live_confirm` wires the real
   ``confirm`` (TTS speaks the question, mic + whisper.cpp capture the yes/no), and
   the hook is registered in ``settings.json`` with a ``Bash`` matcher. That path is
@@ -187,10 +196,11 @@ def summarize(tool_name: str, tool_input: Mapping[str, Any]) -> str:
 def _decision(permission: str, reason: str) -> dict[str, Any]:
     """Wrap a permission verdict in Claude Code's ``PreToolUse`` output shape.
 
-    See the hooks reference: a ``PreToolUse`` hook returns
-    ``hookSpecificOutput.permissionDecision`` of ``allow`` / ``deny`` / ``ask``;
-    ``allow`` overrides the normal permission flow (so it auto-approves even under
-    ``acceptEdits``), which is what lets benign commands run unattended.
+    A ``PreToolUse`` decision is ``hookSpecificOutput.permissionDecision`` of
+    ``allow`` / ``deny`` / ``ask``. This is the documented, pure shape :func:`decide`
+    returns; note that :func:`main` delivers a *deny* via the exit-code protocol
+    (exit 2 + stderr) because 2.1.150 ignores a stdout ``deny`` (see the module
+    docstring), while an ``allow`` is emitted as this JSON at exit 0.
     """
     return {
         "hookSpecificOutput": {
@@ -251,21 +261,33 @@ def interpret_confirmation(transcript: str) -> bool:
 def main(
     stdin: TextIO | None = None,
     stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
     confirm: Confirm | None = None,
 ) -> int:
-    """Read a ``PreToolUse`` payload from stdin, write the decision JSON to stdout.
+    """Read a ``PreToolUse`` payload from stdin and emit the gate's decision.
+
+    The emission uses the channel Claude Code actually honors, verified live
+    against ``claude`` 2.1.150 (2026-05-25): a ``deny`` emitted as stdout JSON
+    (``permissionDecision: "deny"``) is **not** blocked — the tool still runs — so
+    a denial travels via the **exit-code protocol** instead: the reason on stderr
+    and exit 2, which Claude Code blocks on (and feeds the reason back to the
+    model). An ``allow`` rides the documented stdout JSON at exit 0.
 
     ``confirm`` is injected in tests; left unset it is built live
     (:func:`build_live_confirm`) so the spawned hook speaks the question and
-    captures the spoken answer. Always exits 0 — the verdict travels in the JSON,
-    not the exit code.
+    captures the spoken answer.
     """
     stdin = stdin if stdin is not None else sys.stdin
     stdout = stdout if stdout is not None else sys.stdout
+    stderr = stderr if stderr is not None else sys.stderr
     if confirm is None:  # pragma: no cover - live audio path, exercised manually
         confirm = build_live_confirm()
     payload = json.load(stdin)
-    json.dump(decide(payload, confirm), stdout)
+    output = decide(payload, confirm)["hookSpecificOutput"]
+    if output["permissionDecision"] == "deny":
+        stderr.write(output["permissionDecisionReason"] + "\n")
+        return 2  # exit 2 is the PreToolUse block Claude Code honors
+    json.dump({"hookSpecificOutput": output}, stdout)
     stdout.write("\n")
     return 0
 
