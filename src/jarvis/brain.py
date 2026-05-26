@@ -32,6 +32,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
 from jarvis.config import Settings, get_settings
+from jarvis.persona import VOICE_SYSTEM_PROMPT
 
 #: A blocking runner: takes a ``claude`` argv and returns its full stdout.
 Runner = Callable[[list[str]], str]
@@ -315,12 +316,17 @@ class Brain:
         return self._session_id
 
     def _base_argv(self, prompt: str) -> list[str]:
+        # The voice persona rides on both call shapes: it is appended here, so the
+        # ``argv[3:3]`` --output-format insertions and the trailing --resume in the
+        # build methods leave it intact (flag order is irrelevant to ``claude``).
         return [
             self._settings.claude_binary,
             "-p",
             prompt,
             "--permission-mode",
             str(self._settings.permission_mode),
+            "--append-system-prompt",
+            VOICE_SYSTEM_PROMPT,
         ]
 
     def _build_argv(self, prompt: str) -> list[str]:

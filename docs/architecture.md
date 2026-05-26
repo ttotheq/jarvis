@@ -56,7 +56,7 @@ Commit scopes match these names.
 | `jarvis.tts` | Kokoro synthesis (British male voice) | Phase 1 |
 | `jarvis.wakeword` | openWakeWord "hey_jarvis" | Phase 2 |
 | `jarvis.vad` | Silero VAD endpointing (`Endpointer`) + speech-onset for barge-in (`OnsetDetector`) | Phase 2 |
-| `jarvis.persona` | Voice-mode system prompt | Phase 3 |
+| `jarvis.persona` | Voice-mode system prompt (`--append-system-prompt`) + the pure G3.2 conciseness/no-code metric | Phase 3 |
 | `jarvis.loop` | Turn orchestrator (push-to-talk in P1; state machine + barge-in in 2–3) | Phase 1 |
 
 ## The brain: driving Claude Code
