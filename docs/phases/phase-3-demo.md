@@ -19,7 +19,7 @@ A throwaway target (`/tmp/jarvis-demo/old-cache.log`) stood in for anything real
 |-----------|------|-------------|
 | Spoken permission gate | G3.3 | **PASS — demonstrated audibly, both directions, end-to-end.** A live blocking-protocol bug was found and fixed in the process (see below). |
 | In-character replies | G3.2 | **PASS — heard live, genuinely in-register** (dry, concise, "sir"). |
-| Interrupt / barge-in | G3.1 | **Mechanism proven (fires < 300 ms), but live acoustic barge-in self-triggers** (no echo cancellation + a CoreAudio stream conflict) — recorded as a confirmed limitation, fix deferred. |
+| Interrupt / barge-in | G3.1 | **Historical limitation at demo time:** mechanism proven (fires < 300 ms), but live acoustic barge-in self-triggered (no echo cancellation + a CoreAudio stream conflict). This was later fixed in G4.0 on 2026-05-26. |
 
 ## Clip 2 — spoken permission gate (G3.3)
 
@@ -115,12 +115,12 @@ capture and for the watcher). The barge-in *logic* is correct and unit-proven
 
 1. **Shipped fix:** PreToolUse denial via exit-2/stderr, not stdout JSON (verified
    against `claude` 2.1.150). Covered in `tests/test_permission_gate.py`.
-2. **Deferred → tracked as pre-Phase 4 action G4.0** (`phase-4-daemon.md`): rather
-   than ducking/AEC to make any-speech barge-in robust, the trigger moves to
-   **wake-phrase gating** (only "hey jarvis" interrupts; reuses `jarvis.wakeword`),
-   which rejects ambient/other-voice/self speech by construction. The `-50`
-   concurrent-stream fix is a prerequisite (share one stream / match sample rates) so
-   the mic feeds the wake-word detector valid frames during playback.
+2. **Shipped on 2026-05-26 as G4.0** (`phase-4-daemon.md`): rather than ducking/AEC
+   to make any-speech barge-in robust, the trigger moved to **wake-phrase
+   gating** (only "hey jarvis" interrupts; reuses `jarvis.wakeword`). The live
+   path now shares one persistent mic between capture and `SPEAKING` and
+   resamples to the detector's 16 kHz frame geometry when needed, eliminating the
+   concurrent-stream `-50` seen in this demo record.
 3. **Registering the gate for the real loop:** add to the `settings.json` the brain's
    `claude` reads (Bash matcher → `… python -m jarvis.permissions`); see the Phase 3
    doc Outcomes for the snippet.

@@ -7,7 +7,7 @@ microphone. The native sounddevice backend is a thin, hardware-only shim.
 
 from __future__ import annotations
 
-from jarvis.audio import Clip, record
+from jarvis.audio import Clip, record, resample_mono_pcm16
 
 
 class FakeSource:
@@ -63,3 +63,14 @@ def test_record_then_playback_roundtrip() -> None:
     speaker.play(clip)
     assert speaker.played == [clip]
     assert speaker.played[0].samples == b"abcd"
+
+
+def test_resample_mono_pcm16_noop_when_rates_match() -> None:
+    samples = b"\x01\x00\x02\x00\x03\x00"
+    assert resample_mono_pcm16(samples, input_rate=16_000, output_rate=16_000) == samples
+
+
+def test_resample_mono_pcm16_downsamples_to_expected_length() -> None:
+    samples = b"".join(i.to_bytes(2, "little", signed=True) for i in range(12))
+    resampled = resample_mono_pcm16(samples, input_rate=48_000, output_rate=16_000)
+    assert len(resampled) == len(samples) // 3

@@ -1,10 +1,13 @@
-"""Wake-word detection: the IDLE-state "Hey Jarvis" trigger (Phase 2 goal G2.1).
+"""Wake-word detection: the "Hey Jarvis" primitive for the always-on runtime (G2.1).
 
-In the IDLE state the orchestrator (docs/architecture.md) watches the microphone
-for the phrase "hey jarvis" and only then wakes into LISTENING. Detection is
-openWakeWord's pretrained ``hey_jarvis`` model run on a rolling buffer of 80 ms
-audio frames; each frame yields a score in [0, 1] and a wake fires once the score
-crosses ``wake_threshold`` (``jarvis.config``).
+In the always-on runtime described in ``docs/architecture.md``, the orchestrator
+watches the microphone for the phrase "hey jarvis" and only then wakes into
+LISTENING. The current ``jarvis run`` developer harness still enters at LISTENING
+via push-to-talk or timed turns; Phase 4 resumes the always-on path and reuses this
+detector for G4.0's wake-phrase-gated barge-in. Detection is openWakeWord's
+pretrained ``hey_jarvis`` model run on a rolling buffer of 80 ms audio frames; each
+frame yields a score in [0, 1] and a wake fires once the score crosses
+``wake_threshold`` (``jarvis.config``).
 
 The native model is wrapped as a :data:`Detector` callable — one PCM16 frame in,
 one score out — so the listening logic depends on the interface, not openWakeWord.
@@ -24,7 +27,8 @@ from dataclasses import dataclass
 from jarvis.audio import Clip
 from jarvis.config import Settings, get_settings
 
-#: openWakeWord consumes 80 ms frames: 1280 samples * 2 bytes (PCM16) at 16 kHz.
+#: openWakeWord consumes 80 ms frames: 1280 PCM16 samples at 16 kHz.
+SAMPLE_RATE = 16_000
 FRAME_SAMPLES = 1280
 FRAME_BYTES = FRAME_SAMPLES * 2
 
@@ -54,9 +58,13 @@ class WakeWordListener:
     detect: Detector
     threshold: float
 
+    def score(self, frame: bytes) -> float:
+        """Return the wake-word score for one frame."""
+        return self.detect(frame)
+
     def scored(self, frame: bytes) -> bool:
         """Score one frame; True if it crosses (>=) the threshold."""
-        return self.detect(frame) >= self.threshold
+        return self.score(frame) >= self.threshold
 
     def wait_for_wake(self, frames: Iterable[bytes]) -> bool:
         """Consume frames until one crosses the threshold.

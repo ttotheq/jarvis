@@ -20,26 +20,35 @@ Only the final **text prompt** leaves the machine (to Anthropic's API, via the
 `claude` CLI). All audio, wake-word detection, transcription, and synthesis are
 on-device. See [ADR-0002](adr/0002-local-first-voice-stack.md).
 
+The always-on path above is the **target runtime**. The current `jarvis run`
+developer harness still enters at `LISTENING` via push-to-talk or timed turns;
+the wake-word detector and VAD pieces are implemented and measured separately,
+and Phase 4 now continues from the shipped G4.0 carryover rather than opening
+with it.
+
 ## Runtime state machine
 
-The orchestrator (`jarvis.loop`) is a small state machine:
+The always-on orchestrator (`jarvis.loop` plus wake-word / VAD wiring) is a small
+state machine:
 
 | State | Active components | Transition |
 |-------|-------------------|------------|
 | `IDLE` | wake word | wake word detected → `LISTENING` |
 | `LISTENING` | mic capture + VAD | end-of-speech (silence ≥ `vad_silence_ms`) → `THINKING` |
 | `THINKING` | STT then `claude -p` (streaming) | first speakable sentence ready → `SPEAKING` |
-| `SPEAKING` | TTS playback (mic stays hot) | playback done → `IDLE`; user speaks → barge-in → `LISTENING` |
+| `SPEAKING` | TTS playback (mic stays hot) | playback done → `IDLE`; wake phrase detected → barge-in → `LISTENING` |
 
 Streaming overlaps `THINKING` and `SPEAKING`: TTS begins on the first complete
 sentence from Claude rather than waiting for the full response.
 
-During `SPEAKING` the mic stays hot. An onset watcher (`jarvis.vad.OnsetDetector`
-on the live frame source) fires on the first speech frame; that aborts playback
+During `SPEAKING` the mic stays hot. The live watcher now reuses
+`jarvis.wakeword`: a persistent input stream stays open across LISTENING capture
+and SPEAKING, frames are resampled to openWakeWord's 16 kHz geometry when the
+configured input rate differs, and only `"hey jarvis"` aborts playback
 (`Speaker.stop()`), cancels the in-flight `claude` stream (closing the token
-generator terminates the child), and returns to `LISTENING` — barge-in (G3.1),
-bounded at ≤ 300 ms from onset because `stop()` halts the clip rather than waiting
-out the sentence.
+generator terminates the child), and returns to `LISTENING`. Setting
+`JARVIS_LOG_LEVEL=DEBUG` logs per-frame RMS + wake score + whether a read failed
+during `SPEAKING`, which is the live proof surface for the G4.0 stream fix.
 
 ## Module map
 
@@ -50,14 +59,14 @@ Commit scopes match these names.
 |--------|----------------|-----------|
 | `jarvis.config` | Twelve-factor settings (present today) | scaffolding |
 | `jarvis.cli` | Command-line surface (present today) | scaffolding |
-| `jarvis.audio` | Mic capture + playback (`sounddevice`); `Speaker.stop()` aborts a clip mid-playback for barge-in (Phase 3) | Phase 1 |
+| `jarvis.audio` | Mic capture + playback (`sounddevice`); persistent shared mic + PCM16 resampling for G4.0 live barge-in | Phase 1 |
 | `jarvis.stt` | whisper.cpp transcription | Phase 1 |
 | `jarvis.brain` | `claude -p` subprocess, session resume, speakable-text extraction | Phase 1 |
 | `jarvis.tts` | Kokoro synthesis (British male voice) | Phase 1 |
-| `jarvis.wakeword` | openWakeWord "hey_jarvis" | Phase 2 |
-| `jarvis.vad` | Silero VAD endpointing (`Endpointer`) + speech-onset for barge-in (`OnsetDetector`) | Phase 2 |
+| `jarvis.wakeword` | openWakeWord "hey_jarvis" detector primitive; reused for G4.0 wake-phrase barge-in | Phase 2 |
+| `jarvis.vad` | Silero VAD endpointing (`Endpointer`) + the retained raw-speech onset primitive (`OnsetDetector`) | Phase 2 |
 | `jarvis.persona` | Voice-mode system prompt (`--append-system-prompt`) + the pure G3.2 conciseness/no-code metric | Phase 3 |
-| `jarvis.loop` | Turn orchestrator (push-to-talk in P1; state machine + barge-in in 2–3) | Phase 1 |
+| `jarvis.loop` | Turn orchestrator (developer harness: push-to-talk / timed turn today; streaming + wake-phrase-gated barge-in landed; always-on wiring continues in Phase 4) | Phase 1 |
 
 ## The brain: driving Claude Code
 
@@ -81,16 +90,22 @@ See [ADR-0003](adr/0003-drive-claude-code-via-headless-mode.md).
 
 ## Latency budget (fully local, Apple Silicon)
 
-Target **time-to-first-audio ≤ 1.5 s p50** from end-of-speech. The dominant
-sinks are endpointing and Claude's time-to-first-token; STT and TTS are cheap if
-streamed.
+Phase 2 measured the current spawn-per-turn `claude -p` path and renegotiated the
+time-to-first-audio target accordingly. The current acceptance bar is
+**≤ 6.5 s p50 / ≤ 8.0 s p95** from end-of-speech to first audio, matching the
+measured **6.07 s p50 / 7.75 s p95** distribution on Apple Silicon. The standing
+forward target is **≤ 2.0 s p50**, but that requires a persistent-brain
+re-architecture (ADR-0003 revisit); the headless CLI startup cost dominates the
+current runtime.
 
-| Stage | Budget (p50) |
-|-------|-------------|
-| VAD endpoint decision | 150–300 ms |
-| STT (whisper.cpp turbo, short utterance) | 200–500 ms |
-| Claude time-to-first-token | 300–800 ms |
-| TTS first audio chunk (Kokoro) | 100–300 ms |
+| Stage | Current measured / attributed p50 |
+|-------|----------------------------------|
+| VAD silence hangover | 700 ms |
+| STT (whisper.cpp `large-v3-turbo`) | ~1.1 s |
+| Claude time-to-first-token (`claude -p`) | 2.76 s isolated; dominant and variable |
+| TTS first audio chunk (Kokoro) | ~180 ms |
 
-The single highest-impact rule: **stream at every stage** so total latency
-trends toward `max(stages)` rather than `sum(stages)`.
+Streaming still matters: it shortens **total turn time** by letting sentence one
+play while later text generates. It does **not** reduce time-to-first-audio on the
+current architecture, because STT → first Claude token → first TTS chunk is still a
+strictly sequential path.

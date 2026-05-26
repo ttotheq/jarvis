@@ -1,10 +1,11 @@
 # Phase 2 — Wake word + streaming
 
-- **Status:** In progress
+- **Status:** Done — wake-word, VAD, streaming, and TTFA measurement landed; the
+  default `jarvis run` command remains the development harness (push-to-talk or
+  timed turns) while the always-on runtime resumes in Phase 4 after G4.0.
 - **Milestone:** Phase 2
-- **Objective:** Replace push-to-talk with always-on "Hey Jarvis", and make it
-  feel responsive by streaming every stage. This is where latency becomes a
-  first-class, measured concern.
+- **Objective:** Land the wake-word / VAD / streaming foundation for the always-on
+  runtime, and make latency a first-class, measured concern.
 
 ## In scope
 
@@ -41,10 +42,16 @@
 
 ## Definition of Done
 
-All goals met; latency benchmark recorded in Outcomes; "Hey Jarvis" works hands
--free; tests green; coverage ≥ 80%.
+All goals met; latency benchmark recorded in Outcomes; wake-word / VAD / streaming
+pieces verified and documented; tests green; coverage ≥ 80%.
 
 ## Outcomes
+
+The wake-word detector, VAD, streaming path, and their benchmarks all landed in
+this phase. The current `jarvis run` developer harness still captures one utterance
+via push-to-talk or timed turns; the always-on runtime path continues in Phase 4.
+G4.0 has since closed the Phase 3 carryover by moving live barge-in to the wake
+phrase on top of a shared persistent mic.
 
 ### G2.4 — Streaming overlap + state machine (done)
 

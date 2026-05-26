@@ -7,6 +7,7 @@ introduced in Phase 0/1 per ``docs/phases/``.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 import typer
@@ -56,11 +57,14 @@ def _continue_for(max_turns: int | None) -> Callable[[int], bool]:
 
 def _push_to_talk_record_turn(  # pragma: no cover - requires a real microphone
     sample_rate: int,
+    source: Callable[[], bytes],
+    *,
+    reset_source: Callable[[], None] | None = None,
 ) -> Callable[[], Clip]:
     """Build a record-one-turn callable: Enter to start, Enter again to stop."""
     import threading
 
-    from jarvis.audio import make_sounddevice_source, record
+    from jarvis.audio import record
 
     def _record() -> Clip:
         input("Press Enter, speak, then press Enter again to send… ")
@@ -71,7 +75,8 @@ def _push_to_talk_record_turn(  # pragma: no cover - requires a real microphone
             stop.set()
 
         threading.Thread(target=_watch_for_stop, daemon=True).start()
-        source = make_sounddevice_source(sample_rate)
+        if reset_source is not None:
+            reset_source()
         return record(source, stop=stop.is_set, sample_rate=sample_rate)
 
     return _record
@@ -92,6 +97,9 @@ _GUIDED_PROMPTS = (
 def _timed_record_turn(  # pragma: no cover - requires a real microphone
     sample_rate: int,
     seconds: float,
+    source: Callable[[], bytes],
+    *,
+    reset_source: Callable[[], None] | None = None,
     prompts: tuple[str, ...] = (),
 ) -> Callable[[], Clip]:
     """Build a hands-free record-one-turn callable: spoken cue, beep, fixed window.
@@ -104,7 +112,7 @@ def _timed_record_turn(  # pragma: no cover - requires a real microphone
     import subprocess
     import time
 
-    from jarvis.audio import make_sounddevice_source, record
+    from jarvis.audio import record
 
     say = shutil.which("say")
     turn = {"i": 0}
@@ -119,7 +127,8 @@ def _timed_record_turn(  # pragma: no cover - requires a real microphone
             cue = f"Repeat after the beep: {line}" if line else "Your turn. Speak after the beep."
             subprocess.run([say, cue], check=False)
             subprocess.run([say, "[[volm 0.4]] beep"], check=False)
-        source = make_sounddevice_source(sample_rate)
+        if reset_source is not None:
+            reset_source()
         deadline = time.monotonic() + seconds
         return record(source, stop=lambda: time.monotonic() >= deadline, sample_rate=sample_rate)
 
@@ -136,31 +145,55 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
     interactive keyboard is available. The loop's logic is covered by
     tests/test_loop.py; this wiring is the manual end-to-end check (G1.1).
     """
+    from jarvis.audio import SoundDeviceMicrophone
     from jarvis.brain import Brain
     from jarvis.loop import VoiceLoop, build_default_barge_in_watcher
     from jarvis.stt import WhisperCppTranscriber
     from jarvis.tts import build_default_speaker, build_default_synthesizer
+    from jarvis.wakeword import FRAME_SAMPLES, SAMPLE_RATE
 
     settings = get_settings()
-    if settings.ptt_seconds is not None:
-        record_turn = _timed_record_turn(
-            settings.sample_rate, settings.ptt_seconds, prompts=_GUIDED_PROMPTS
-        )
-    else:
-        record_turn = _push_to_talk_record_turn(settings.sample_rate)
-    loop = VoiceLoop(
-        record_turn=record_turn,
-        transcribe=WhisperCppTranscriber(settings),
-        stream=Brain(settings).stream,
-        synthesize=build_default_synthesizer(),
-        speaker=build_default_speaker(),
-        watch_barge_in=build_default_barge_in_watcher(),
+    logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
+    block_frames = max(1, round(settings.sample_rate * FRAME_SAMPLES / SAMPLE_RATE))
+    microphone = SoundDeviceMicrophone(
+        settings.sample_rate,
+        block_frames=block_frames,
+        device=settings.input_device,
     )
-    typer.echo("Jarvis is listening. Press Ctrl-C to stop.")
     try:
-        turns = loop.converse(should_continue=_continue_for(settings.max_turns))
-    except KeyboardInterrupt:
-        typer.echo("\nGoodbye, sir.")
-        return
+        if settings.ptt_seconds is not None:
+            record_turn = _timed_record_turn(
+                settings.sample_rate,
+                settings.ptt_seconds,
+                microphone.read,
+                reset_source=microphone.flush,
+                prompts=_GUIDED_PROMPTS,
+            )
+        else:
+            record_turn = _push_to_talk_record_turn(
+                settings.sample_rate,
+                microphone.read,
+                reset_source=microphone.flush,
+            )
+        loop = VoiceLoop(
+            record_turn=record_turn,
+            transcribe=WhisperCppTranscriber(settings),
+            stream=Brain(settings).stream,
+            synthesize=build_default_synthesizer(),
+            speaker=build_default_speaker(),
+            watch_barge_in=build_default_barge_in_watcher(
+                microphone.read,
+                source_sample_rate=settings.sample_rate,
+                reset_source=microphone.flush,
+            ),
+        )
+        typer.echo("Jarvis is listening. Press Ctrl-C to stop.")
+        try:
+            turns = loop.converse(should_continue=_continue_for(settings.max_turns))
+        except KeyboardInterrupt:
+            typer.echo("\nGoodbye, sir.")
+            return
+    finally:
+        microphone.close()
     for i, turn in enumerate(turns, 1):
         typer.echo(f"[{i}] you: {turn.transcript!r}  jarvis: {turn.reply!r}")
