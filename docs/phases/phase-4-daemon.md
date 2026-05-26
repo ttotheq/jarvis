@@ -249,12 +249,16 @@ self-sustains under the service. This unblocks **G4.2** (cold start) and **G4.3*
   ("Four, sir.", "8.", a 3-sentence answer), and exited cleanly — confirming
   `IDLE → LISTENING → THINKING → SPEAKING → IDLE` end to end. The native
   `build_wait_for_wake` / `build_vad_record_turn` shims stay `# pragma: no cover`.
-- **Audio-routing finding (AirPods):** because the loop holds the mic open
-  continuously, selecting AirPods as input forces them from A2DP to the HFP
-  headset profile, muffling TTS output. Mitigation is a **device split** — input
-  on the built-in mic (`JARVIS_INPUT_DEVICE="MacBook Air Microphone"`), output on
-  the AirPods (stays A2DP). This also removes the mic-hears-itself self-trigger
-  risk, since playback is then in-ear. (Led directly to G4.6 below.)
+- **Audio-routing note (AirPods) — initial finding NOT reproduced.** One early
+  single-sentence run muffled on AirPods, first attributed to the always-open mic
+  forcing the A2DP→HFP headset profile. A later test with AirPods on **both** input
+  and output (no device overrides, after G4.6) came back **crystal clear and
+  gapless**, so the muffling did not reproduce — most likely transient Bluetooth
+  settling, or the old per-clip `sd.play` churn that G4.6's persistent stream
+  resolved. A **device split** (`JARVIS_INPUT_DEVICE="MacBook Air Microphone"`,
+  output on the AirPods) remains available as a fallback if muffling ever recurs,
+  and also avoids the mic-hears-itself self-trigger, but it is **not required**.
+  (Unverified: which mic macOS used on the no-override run.)
 
 **Deferred to a focused follow-up:** status chimes (ready/listening/thinking) — a
 Phase 4 in-scope item — ride cleanly on the new `on_state` `IDLE`/`LISTENING`
@@ -294,8 +298,10 @@ render time was dead air). One architectural change fixes both.
   coverage**; the real streaming speaker is the only `# pragma: no cover` piece.
 - **Live (2026-05-26):** the same three-sentence Bluetooth-profiles prompt that
   previously clicked and stalled now plays **gaplessly** on the built-in speakers
-  (input on the built-in mic, wake score 0.974). The persistent single stream also
-  removes the per-sentence A2DP renegotiation that caused the AirPods clicks.
+  (input on the built-in mic, wake score 0.974). A later multi-sentence run on
+  **AirPods** (both input and output, no overrides) was likewise **crystal clear
+  and gapless** — confirming the persistent single stream removes the per-sentence
+  A2DP renegotiation that caused the earlier Bluetooth clicks.
 
 **Note (separate, persona tuning):** the 3-sentence replies ran ~90–95 words, over
 the persona's ≤ 50-word target — a G3.2 prompt-tuning item, independent of playback.
