@@ -183,17 +183,22 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
     be installed — run ``jarvis doctor`` first. The loop's logic is covered by
     tests/test_loop.py and tests/test_always_on.py; this wiring is manual.
     """
+    from typing import Any
+
     from jarvis.audio import SoundDeviceMicrophone
     from jarvis.brain import Brain
     from jarvis.config import RunMode
     from jarvis.loop import (
+        BargeInWatcher,
+        Lazy,
         VoiceLoop,
         build_default_barge_in_watcher,
         build_vad_record_turn,
         build_wait_for_wake,
+        warm_in_background,
     )
     from jarvis.stt import WhisperCppTranscriber
-    from jarvis.tts import build_default_speaker, build_default_synthesizer
+    from jarvis.tts import Synthesizer, build_default_speaker, build_default_synthesizer
     from jarvis.wakeword import FRAME_SAMPLES, SAMPLE_RATE
 
     settings = get_settings()
@@ -206,14 +211,38 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
     )
     speaker = build_default_speaker()
     try:
-        wait_for_wake: Callable[[], None] | None = None
-        if settings.run_mode is RunMode.wake_word:
-            record_turn = build_vad_record_turn(
+        # Cold start (G4.2): readiness gates on the wake path alone — the
+        # persistent mic plus the openWakeWord wake gate. Kokoro (TTS), the
+        # barge-in watcher's second openWakeWord model, and (in wake_word mode)
+        # the Silero VAD endpointer are needed only *after* a wake, so defer them
+        # behind Lazy and warm them in the background once the ready message is
+        # printed. The multi-second Kokoro + torch loads then overlap the
+        # walk-up-and-speak time instead of blocking the wake gate.
+        synth: Lazy[Synthesizer] = Lazy(build_default_synthesizer)
+        barge_in: Lazy[BargeInWatcher] = Lazy(
+            lambda: build_default_barge_in_watcher(
                 microphone.read,
-                sample_rate=settings.sample_rate,
-                max_seconds=settings.listen_max_seconds,
+                source_sample_rate=settings.sample_rate,
                 reset_source=microphone.flush,
             )
+        )
+        deferred: list[Lazy[Any]] = [synth, barge_in]
+
+        wait_for_wake: Callable[[], None] | None = None
+        record_turn: Callable[[], Clip]
+        if settings.run_mode is RunMode.wake_word:
+            record = Lazy(
+                lambda: build_vad_record_turn(
+                    microphone.read,
+                    sample_rate=settings.sample_rate,
+                    max_seconds=settings.listen_max_seconds,
+                    reset_source=microphone.flush,
+                )
+            )
+            deferred.append(record)
+            record_turn = lambda: record.get()()  # noqa: E731
+            # The openWakeWord wake gate is the one component that must be live to
+            # hear "hey jarvis", so build it eagerly — it is the readiness gate.
             wait_for_wake = build_wait_for_wake(
                 microphone.read,
                 source_sample_rate=settings.sample_rate,
@@ -239,19 +268,16 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
             record_turn=record_turn,
             transcribe=WhisperCppTranscriber(settings),
             stream=Brain(settings).stream,
-            synthesize=build_default_synthesizer(),
+            synthesize=lambda text: synth.get()(text),
             speaker=speaker,
             wait_for_wake=wait_for_wake,
-            watch_barge_in=build_default_barge_in_watcher(
-                microphone.read,
-                source_sample_rate=settings.sample_rate,
-                reset_source=microphone.flush,
-            ),
+            watch_barge_in=lambda on_onset, stop: barge_in.get()(on_onset, stop),
         )
         if settings.run_mode is RunMode.wake_word:
             typer.echo('Jarvis is ready. Say "hey jarvis" to begin. Press Ctrl-C to stop.')
         else:
             typer.echo("Jarvis is listening. Press Ctrl-C to stop.")
+        warm_in_background(*deferred)  # warm the deferred loads after readiness
         try:
             turns = loop.converse(should_continue=_continue_for(settings.max_turns))
         except KeyboardInterrupt:

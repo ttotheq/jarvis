@@ -59,6 +59,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 4 cold start (G4.2): `jarvis run` is now ready for "hey jarvis" in **~1 s**
+  (target ≤ 10 s). Readiness gates on the wake path alone — the persistent mic and
+  the openWakeWord listener — while the heavier components (Kokoro, the Silero VAD
+  record-turn, the barge-in watcher's second openWakeWord model, and the
+  `import torch` they pull in) warm in the background after the ready message.
+  New `jarvis.loop.Lazy[T]` (a thread-safe build-once-on-first-use cell) and
+  `warm_in_background(*lazies)` (builds them on a daemon thread) carry the
+  deferral; `jarvis.cli.run`'s `synthesize` / `record_turn` / `watch_barge_in`
+  seams pull their backing object through `Lazy.get()`, so a turn that starts
+  before warm-up finishes blocks rather than double-building. New
+  `scripts/bench_latency.py --mode cold_start` measures boot → ready-for-wake-word
+  and breaks down the deferred loads; write-first tests in
+  `tests/test_bench_cold_start.py` and `tests/test_warmup.py`. **Verified live
+  (2026-05-26):** `python -m jarvis run` (the launchd entry point) reached ready in
+  0.96 s with the torch/Kokoro loads confirmed off the critical path; live build
+  measured mic+wake 0.88 s vs 4.97 s for the full eager warm.
 - Phase 4 smooth streaming playback (G4.6): multi-sentence replies now play as one
   continuous utterance. The live always-on check exposed two stacked artifacts —
   boundary **clicks** + clipped sentence-starts (a fresh `sd.play` per sentence made

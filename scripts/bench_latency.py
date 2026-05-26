@@ -1,6 +1,6 @@
-"""Measure Phase 2 latency: VAD endpoint decision (G2.2) and time-to-first-audio (G2.3).
+"""Measure latency: VAD endpoint decision (G2.2), time-to-first-audio (G2.3), cold start (G4.2).
 
-Two modes, both reusing :class:`LatencyResult` and its percentile helpers:
+Three modes, all reusing :class:`LatencyResult` and its percentile helpers:
 
 ``--mode vad`` (default) — the VAD endpoint *decision* latency (G2.2). ADR-0002
 puts a Silero VAD endpointer in the LISTENING state to decide when the user
@@ -24,13 +24,26 @@ time-to-*first*-audio. ``claude`` is spawned per run (matching real per-turn
 behaviour, ADR-0003), so the dominant first-token cost is honest, not a warm
 reuse. ``--no-hangover`` reframes the metric as endpoint-fire -> first audio.
 
+``--mode cold_start`` — boot to ready-for-wake-word (G4.2): how long after launch
+before the always-on loop can block in ``wait_for_wake`` and hear "hey jarvis".
+In the ``wake_word`` runtime only the persistent mic and the openWakeWord listener
+gate readiness; the Silero VAD endpointer, Kokoro synthesizer, and the barge-in
+watcher's second openWakeWord model are needed only *after* a wake, so they are
+warmed in the background and excluded from ``ready_s``. The mode times each
+component's real construction, reports ``ready_s`` against the 10 s target, and
+breaks down what was deferred. It is a first-process point measurement (the
+one-time ``import torch`` and the OS file cache warm later builds), so it defaults
+to a single run.
+
 Every stage is injected (like ``scripts/bench_brain.py``'s subprocess runner):
 the real models when run live, fakes in ``tests/test_bench_latency.py`` /
-``tests/test_bench_ttfa.py`` so the timing/aggregation never touches torch,
-whisper, Kokoro, or the network. Run live (voice extra)::
+``tests/test_bench_ttfa.py`` / ``tests/test_bench_cold_start.py`` so the
+timing/aggregation never touches torch, whisper, Kokoro, or the network. Run live
+(voice extra)::
 
     uv run python scripts/bench_latency.py --mode vad  --runs 20
     uv run python scripts/bench_latency.py --mode ttfa --runs 20
+    uv run python scripts/bench_latency.py --mode cold_start
 """
 
 from __future__ import annotations
@@ -232,6 +245,100 @@ def run_ttfa_benchmark(
     return LatencyResult(runs=runs, samples_s=samples)
 
 
+# --- Cold start (G4.2) -----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ColdStartStages:
+    """The injectable builder-timers of the always-on cold start (G4.2).
+
+    Each timer builds (or, in tests, simulates building) one runtime component
+    and returns its own elapsed seconds. The metric is boot -> ready-for-wake-
+    word: in the ``wake_word`` runtime only the persistent mic and the
+    openWakeWord listener must exist before the loop can block in
+    ``wait_for_wake`` and hear "hey jarvis". The Silero VAD endpointer, the
+    Kokoro synthesizer, and the barge-in watcher are needed only *after* a wake
+    (capture, reply, interrupt), so they are warmed in the background once the
+    wake gate is up and their cost is reported as a breakdown, not counted toward
+    readiness.
+    """
+
+    build_mic: StageTimer
+    build_wake: StageTimer
+    build_vad: StageTimer
+    build_tts: StageTimer
+    build_barge_in: StageTimer
+
+
+@dataclass(frozen=True)
+class ColdStartResult:
+    """One cold-start measurement: time-to-ready plus the deferred breakdown."""
+
+    ready_s: float  # boot -> ready-for-wake-word (mic open + wake listener loaded)
+    deferred_s: dict[str, float]  # warmed after readiness; not on the wake path
+
+    @property
+    def warm_total_s(self) -> float:
+        """Full warm cost (readiness + every deferred component), to show savings."""
+        return self.ready_s + sum(self.deferred_s.values())
+
+
+def measure_cold_start(stages: ColdStartStages) -> ColdStartResult:
+    """Build the readiness components, then time the deferred ones, once.
+
+    ``ready_s`` is the wake path alone (mic + openWakeWord listener) — the G4.2
+    figure. The deferred components are still built (and timed) so the benchmark
+    can report what was moved off the critical path, but their cost never enters
+    ``ready_s``.
+    """
+    ready_s = stages.build_mic() + stages.build_wake()
+    deferred_s = {
+        "vad": stages.build_vad(),
+        "tts": stages.build_tts(),
+        "barge_in": stages.build_barge_in(),
+    }
+    return ColdStartResult(ready_s=ready_s, deferred_s=deferred_s)
+
+
+def run_cold_start_benchmark(
+    runs: int, *, stages: ColdStartStages
+) -> tuple[LatencyResult, ColdStartResult]:
+    """Measure cold start ``runs`` times; aggregate readiness, keep run 1's breakdown.
+
+    Cold start is fundamentally a first-process point measurement (the one-time
+    ``import torch`` and the OS file cache warm every later build), so the
+    canonical figure is the first run; ``--runs`` > 1 measures warm rebuilds and
+    is offered only so repeated samples reuse :class:`LatencyResult`'s percentile
+    helpers like the other modes. The returned breakdown is from the first run.
+    """
+    first: ColdStartResult | None = None
+    ready_samples: list[float] = []
+    for _ in range(runs):
+        result = measure_cold_start(stages)
+        if first is None:
+            first = result
+        ready_samples.append(result.ready_s)
+    assert first is not None  # runs >= 1
+    return LatencyResult(runs=runs, samples_s=ready_samples), first
+
+
+def _format_cold_start_summary(
+    ready: LatencyResult, breakdown: ColdStartResult, *, target_s: float
+) -> str:
+    verdict = "PASS" if ready.median_s <= target_s else "FAIL"
+    deferred = ", ".join(f"{name} {sec:.2f} s" for name, sec in breakdown.deferred_s.items())
+    deferred_line = deferred if deferred else "(none)"
+    return (
+        f"Cold start (boot -> ready-for-wake-word) over {ready.runs} run(s):\n"
+        f"  ready p50 {ready.median_s:.2f} s | p95 {ready.p95_s:.2f} s | "
+        f"min {ready.min_s:.2f} s | max {ready.max_s:.2f} s\n"
+        f"  target <= {target_s:.0f} s -> {verdict}\n"
+        f"  ready = persistent mic + openWakeWord listener only (the wake path)\n"
+        f"  deferred (warmed in the background after readiness): {deferred_line}\n"
+        f"  full warm cost if loaded eagerly: {breakdown.warm_total_s:.2f} s"
+    )
+
+
 def _format_ttfa_summary(result: LatencyResult, *, include_hangover: bool, hangover_ms: int) -> str:
     if include_hangover:
         hangover_note = (
@@ -308,19 +415,79 @@ def _build_live_stages(  # pragma: no cover - wires whisper, claude, and Kokoro
     )
 
 
+#: G4.2 target: boot -> ready-for-wake-word.
+COLD_START_TARGET_S = 10.0
+
+
+def _build_live_cold_start_stages(  # pragma: no cover - wires the live native stack
+    settings: object,
+) -> ColdStartStages:
+    """Time each runtime component's real construction (G4.2 cold start).
+
+    Mirrors what ``jarvis.cli.run`` builds: the persistent mic and openWakeWord
+    listener gate readiness; the Silero endpointer, Kokoro synthesizer, and the
+    barge-in watcher's second openWakeWord model are the deferred (background-
+    warmed) components. The mic stream is closed after timing so repeated runs do
+    not leak PortAudio streams.
+    """
+    import time
+
+    from jarvis.audio import SoundDeviceMicrophone
+    from jarvis.tts import build_default_synthesizer
+    from jarvis.vad import build_default_endpointer
+    from jarvis.wakeword import FRAME_SAMPLES, build_default_detector, build_default_listener
+    from jarvis.wakeword import SAMPLE_RATE as WAKEWORD_SAMPLE_RATE
+
+    def build_mic() -> float:
+        block_frames = max(
+            1,
+            round(settings.sample_rate * FRAME_SAMPLES / WAKEWORD_SAMPLE_RATE),  # type: ignore[attr-defined]
+        )
+        start = time.perf_counter()
+        mic = SoundDeviceMicrophone(
+            settings.sample_rate,  # type: ignore[attr-defined]
+            block_frames=block_frames,
+            device=settings.input_device,  # type: ignore[attr-defined]
+        )
+        elapsed = time.perf_counter() - start
+        mic.close()
+        return elapsed
+
+    def _timed(build: Callable[[], object]) -> float:
+        start = time.perf_counter()
+        build()
+        return time.perf_counter() - start
+
+    return ColdStartStages(
+        build_mic=build_mic,
+        build_wake=lambda: _timed(lambda: build_default_listener(settings)),  # type: ignore[arg-type]
+        build_vad=lambda: _timed(lambda: build_default_endpointer(settings)),  # type: ignore[arg-type]
+        build_tts=lambda: _timed(build_default_synthesizer),
+        build_barge_in=lambda: _timed(build_default_detector),
+    )
+
+
 def main(  # pragma: no cover - wires the live Silero/whisper/claude/Kokoro stack
     argv: Sequence[str] | None = None,
     *,
     write: Callable[[str], None] = print,
 ) -> int:
-    parser = argparse.ArgumentParser(description="Benchmark Phase 2 latency (VAD / TTFA).")
+    parser = argparse.ArgumentParser(description="Benchmark latency (VAD / TTFA / cold start).")
     parser.add_argument(
         "--mode",
-        choices=("vad", "ttfa"),
+        choices=("vad", "ttfa", "cold_start"),
         default="vad",
-        help="vad: endpoint decision latency (G2.2); ttfa: time-to-first-audio (G2.3)",
+        help=(
+            "vad: endpoint decision latency (G2.2); ttfa: time-to-first-audio (G2.3); "
+            "cold_start: boot -> ready-for-wake-word (G4.2)"
+        ),
     )
-    parser.add_argument("--runs", type=int, default=DEFAULT_RUNS, help="number of runs")
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=None,
+        help="number of runs (default 20; cold_start defaults to 1 — the true first boot)",
+    )
     parser.add_argument(
         "--speech-frames",
         type=int,
@@ -336,10 +503,20 @@ def main(  # pragma: no cover - wires the live Silero/whisper/claude/Kokoro stac
 
     settings = get_settings()
 
+    if args.mode == "cold_start":
+        runs = 1 if args.runs is None else args.runs
+        ready, breakdown = run_cold_start_benchmark(
+            runs, stages=_build_live_cold_start_stages(settings)
+        )
+        write(_format_cold_start_summary(ready, breakdown, target_s=COLD_START_TARGET_S))
+        return 0
+
+    runs = DEFAULT_RUNS if args.runs is None else args.runs
+
     if args.mode == "ttfa":
         include_hangover = not args.no_hangover
         result = run_ttfa_benchmark(
-            args.runs,
+            runs,
             stages=_build_live_stages(settings),
             include_hangover=include_hangover,
         )
@@ -354,7 +531,7 @@ def main(  # pragma: no cover - wires the live Silero/whisper/claude/Kokoro stac
 
     detector = SileroDetector(settings)
     result = run_benchmark(
-        args.runs,
+        runs,
         detect=detector,
         threshold=settings.vad_threshold,
         silence_ms=settings.vad_silence_ms,
