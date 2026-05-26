@@ -25,7 +25,7 @@
 |----|--------|--------|--------------|
 | G2.1 | Wake-word detection | True-accept ≥ 95% / 20 utterances; false-accept ≤ 1 per 30 min ambient | `tests/test_wakeword.py` + soak |
 | G2.2 | Endpoint latency | End-of-speech → STT start ≤ 300 ms p50 | `scripts/bench_latency.py` |
-| G2.3 | Time-to-first-audio | ≤ 1.5 s p50, ≤ 2.5 s p95 | `scripts/bench_latency.py` over 20 runs |
+| G2.3 | Time-to-first-audio | **Renegotiated** (orig. ≤ 1.5 s p50): spawn-per-turn ≤ 6.5 s p50 / ≤ 8 s p95 now; ≤ 2.0 s p50 forward target on a persistent brain — see Outcomes | `scripts/bench_latency.py --mode ttfa` over 20 runs |
 | G2.4 | Streaming overlap | First sentence spoken before full response completes | `tests/test_loop_streaming.py` |
 | G2.5 | Coverage | ≥ 80% | CI |
 
@@ -81,6 +81,70 @@ start over waiting for the full reply, and that window grows with reply length.
 > does not reduce absolute TTFT — only a persistent brain process (Agent SDK /
 > long-lived `claude`, the revisit ADR-0003 anticipates) would. **G2.3 must be
 > renegotiated against this distribution or re-architected before it is chased.**
+> _Resolved below — measured end-to-end and renegotiated (Option A + B)._
+
+### G2.3 — Time-to-first-audio: measured & renegotiated
+
+`scripts/bench_latency.py --mode ttfa` composes the **real** first-audio cascade
+behind injected per-stage timers and sums them per run. The cascade to first
+audio is strictly sequential — STT cannot start until the endpoint fires, the
+brain cannot start until the transcript exists, TTS cannot synthesize until the
+first sentence arrives — so **TTFA is the sum of the stages, not their max**. (The
+G2.4 streaming overlap shortens *total* turn time by speaking sentence one while
+sentence two generates; it does not shorten time-to-*first*-audio.) `claude` is
+spawned per run, matching real per-turn behaviour (ADR-0003), so the dominant
+first-token cost is honest, not a warm reuse.
+
+**Measured live, 20 runs** (Apple Silicon, end-of-speech → first TTS sample,
+700 ms hangover included):
+
+| Metric | p50 | p95 | mean | min | max |
+|--------|-----|-----|------|-----|-----|
+| Time-to-first-audio | **6.07 s** | **7.75 s** | 6.17 s | 4.73 s | 8.78 s |
+
+**Per-stage attribution** (the variable, dominant term is the brain):
+
+| Stage | p50 | Note |
+|-------|-----|------|
+| `vad_silence_ms` hangover | 0.70 s | Fixed UX wait, not compute (same term G2.2 excludes) |
+| STT — whisper.cpp `large-v3-turbo` | ~1.1 s | Core ML accelerated; cold-loads per turn yet cheap |
+| Brain — `claude -p` first token | 2.76 s (isolated; G2.4) | **Dominant + most variable**; drives the whole spread |
+| TTS first chunk — Kokoro | ~0.18 s | Streaming first chunk, well within budget |
+
+The clean floor (`min` 4.73 s) is exactly the isolated brain baseline (2.76 s) +
+the measured fixed stages (0.70 + 1.1 + 0.18 ≈ 1.98 s); the p50/p95 sit higher
+because brain first-token latency inflates under repeated back-to-back spawns
+(an isolated rapid-fire re-measure spiked to 14–30 s — rate-limit throttling, not
+representative of conversational pacing). The original **≤ 1.5 s p50 target was
+never reachable**: the fixed non-brain stages alone (~2.0 s) exceed it before the
+brain is even spawned.
+
+**Renegotiation (three options, trade-offs):**
+
+- **Option A — Accept a spawn-per-turn target.** Set G2.3 to the measured reality:
+  **≤ 6.5 s p50 / ≤ 8 s p95**. _Trade-off:_ honest, immediately verifiable, zero
+  new work; but ~6 s to first word does not feel "Jarvis-fast." Reversible.
+- **Option B — Re-architect to a persistent brain (ADR-0003 revisit).** Replace
+  spawn-per-turn `claude -p` with a long-lived process (Agent SDK / persistent
+  `claude` session) that removes the ~1.9 s CLI-startup floor paid every turn,
+  targeting **≤ 2.0 s p50** (floor ≈ hangover 0.7 + STT 1.1 + warm-brain first
+  token ~0.5 + TTS 0.18). _Trade-off:_ the only path to a responsive assistant,
+  but supersedes ADR-0003's core decision, the SDK is beta/unverified, and it is
+  real Phase 3+ engineering. Highest payoff, highest cost. (Even this cannot reach
+  the original 1.5 s without also trimming STT and/or the hangover.)
+- **Option C — Redefine the metric (drop the hangover).** Measure endpoint-fire →
+  first audio (exclude the 700 ms hangover, as G2.2 already does for its term):
+  `--no-hangover`, target **≤ 5.5 s p50**. _Trade-off:_ internally consistent with
+  G2.2's framing, but changes nothing the user experiences (~6 s perceived) and
+  reads as moving the goalposts. Cosmetic on its own.
+
+**Recommended (adopted): A now + B later.** Take **Option A's spawn-per-turn
+baseline (≤ 6.5 s p50 / ≤ 8 s p95) as the Phase 2 acceptance bar** so Phase 2
+closes honestly on the architecture we actually have, and record **Option B's
+≤ 2.0 s p50 as the standing Phase 3+ target** gated on the persistent-brain
+re-architecture. Reject pure C — redefining the metric without changing the
+architecture is cosmetic. This matches the warning's own guidance and keeps the
+number honest rather than fudged to "pass."
 
 ### G2.1 — Wake-word detection ("hey_jarvis") (both targets met)
 
