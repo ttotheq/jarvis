@@ -1,9 +1,11 @@
 # Phase 4 — Daemon polish
 
-- **Status:** In progress — the **pre-Phase 4 carryover (G4.0)** is now done:
-  wake-phrase-gated barge-in + the audio-stream fix the Phase 3 demo surfaced
-  (`phase-3-demo.md`) landed on 2026-05-26. The remaining daemon/release goals
-  are still ahead.
+- **Status:** In progress — the **pre-Phase 4 carryover (G4.0)** and **G4.1
+  (service lifecycle)** are now done: wake-phrase-gated barge-in + the
+  audio-stream fix (`phase-3-demo.md`) landed on 2026-05-26, and the macOS
+  launchd LaunchAgent (`jarvis service install | uninstall | status`, ADR-0006)
+  landed the same day. The remaining daemon/release goals (G4.2–G4.5) are still
+  ahead.
 - **Milestone:** Phase 4
 - **Objective:** Make Jarvis a dependable always-on background service and cut
   the first release.
@@ -146,3 +148,57 @@ unchanged.
 Residual edge remains the same one called out in planning: if Jarvis ever
 literally says `"hey jarvis"` in a reply, he can still interrupt himself. That
 is acceptable for now; a custom stop phrase model is future work.
+
+### G4.1 — service lifecycle · _Done 2026-05-26_
+
+Jarvis now installs as a macOS **launchd LaunchAgent** (ADR-0006). The new
+`jarvis.service` module owns plist generation and lifecycle, and `jarvis.cli`
+exposes `jarvis service install | uninstall | status`.
+
+- **Config-driven, no baked-in paths.** `build_plist_spec` resolves the entry
+  point at install time to `[sys.executable, "-m", "jarvis", "run"]`, the working
+  directory to the resolved project root, and `EnvironmentVariables.PATH` to the
+  install-time `PATH` so launchd's minimal environment still finds `claude` and
+  the native binaries. The plist label and log directory are config keys
+  (`JARVIS_SERVICE_LABEL` default `com.jarvis.voice`; `JARVIS_SERVICE_LOG_DIR`
+  default `~/Library/Logs/jarvis`).
+- **Auto-start + crash-restart.** The plist sets `RunAtLoad: true` and
+  `KeepAlive: {Crashed: true}` — start at login, restart on crash, but **not** on
+  a clean exit (so the harness exiting for lack of a TTY does not thrash-restart
+  while the always-on entry point is still being wired).
+- **Modern launchctl verbs.** `install` writes the plist, creates the log dir,
+  best-effort boots out any stale registration, then
+  `launchctl bootstrap gui/<uid> <plist>`. `uninstall` runs
+  `bootout gui/<uid>/<label>` and removes the plist (idempotent). `status` runs
+  `print gui/<uid>/<label>` and reports installed/loaded state.
+
+**Verification:**
+
+- Write-first unit tests landed in `tests/test_service_unit.py`, including the
+  named acceptance test `test_service_plist_is_valid` (the rendered plist
+  round-trips through `plistlib` and `ProgramArguments` points at the resolved
+  interpreter + `-m jarvis run`). Plist generation and install/uninstall/status
+  orchestration are exercised with an injected fake `Runner` and a `tmp_path`
+  HOME; `jarvis.service` is at 100% coverage with only the `launchctl`-spawning
+  `default_runner` excluded. Full suite **219 passed, 96% coverage**.
+- **Live install → status → uninstall round-trip (macOS Tahoe 26.5, 2026-05-26):**
+  `jarvis service install` bootstrapped the agent and `plutil -lint` reported the
+  generated plist `OK`. `launchctl print gui/501/com.jarvis.voice` showed
+  `state = running`, `properties = runatload`, `program =
+  /Users/ttotheq/projects/jarvis/.venv/bin/python3`, `arguments = … -m jarvis
+  run`, and the configured stdout/stderr log paths — i.e. the venv interpreter
+  was resolved at install time, not hard-coded. `jarvis service status` returned
+  `loaded (running)` (exit 0). `jarvis service uninstall` booted it out and
+  removed the plist; a follow-up `status` returned `not loaded` (exit 1), the
+  plist was gone, and `launchctl print` no longer knew the service. A second
+  `uninstall` was a clean no-op (idempotent).
+- **Known gap (expected):** `jarvis run` is still the Enter-gated developer
+  harness, so under launchd (no TTY) the launched process loaded the voice stack
+  and then exited (`Aborted.` in the err log) rather than holding a session. With
+  `KeepAlive {Crashed: true}` that clean exit correctly did **not** trigger a
+  relaunch. Wiring the always-on wake-word loop as the launchd entry point is the
+  remaining Phase 4 work; G4.1 delivers the service mechanism it plugs into.
+- **Manual leg for Ty:** the full **logout/login survival** check cannot be
+  performed autonomously. The mechanism is in place and proven loaded with
+  `RunAtLoad: true`; confirm survival by `jarvis service install`, log out and
+  back in, then `jarvis service status` (expect `loaded`).

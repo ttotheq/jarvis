@@ -24,7 +24,11 @@ The always-on path above is the **target runtime**. The current `jarvis run`
 developer harness still enters at `LISTENING` via push-to-talk or timed turns;
 the wake-word detector and VAD pieces are implemented and measured separately,
 and Phase 4 now continues from the shipped G4.0 carryover rather than opening
-with it.
+with it. Phase 4's G4.1 added the service mechanism that runtime plugs into:
+`jarvis service install` registers a macOS launchd LaunchAgent that starts
+`jarvis run` at login and restarts it on crash (see
+[ADR-0006](adr/0006-launchd-launchagent-service.md)); wiring the always-on
+wake-word loop as that entry point is the remaining Phase 4 step.
 
 ## Runtime state machine
 
@@ -67,6 +71,7 @@ Commit scopes match these names.
 | `jarvis.vad` | Silero VAD endpointing (`Endpointer`) + the retained raw-speech onset primitive (`OnsetDetector`) | Phase 2 |
 | `jarvis.persona` | Voice-mode system prompt (`--append-system-prompt`) + the pure G3.2 conciseness/no-code metric | Phase 3 |
 | `jarvis.loop` | Turn orchestrator (developer harness: push-to-talk / timed turn today; streaming + wake-phrase-gated barge-in landed; always-on wiring continues in Phase 4) | Phase 1 |
+| `jarvis.service` | macOS launchd LaunchAgent lifecycle — config-driven plist generation + `install`/`uninstall`/`status` (`jarvis service …`) | Phase 4 |
 
 ## The brain: driving Claude Code
 

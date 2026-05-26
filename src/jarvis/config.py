@@ -30,6 +30,10 @@ def _default_whisper_dir() -> Path:
     return Path.home() / ".cache" / "jarvis" / "whisper"
 
 
+def _default_service_log_dir() -> Path:
+    return Path.home() / "Library" / "Logs" / "jarvis"
+
+
 class Settings(BaseSettings):
     """Strongly-typed, validated runtime settings.
 
@@ -79,6 +83,13 @@ class Settings(BaseSettings):
     # until Ctrl-C).
     ptt_seconds: float | None = Field(default=None, gt=0)
     max_turns: int | None = Field(default=None, gt=0)
+
+    # --- launchd service (G4.1) -------------------------------------------
+    # Reverse-DNS label for the LaunchAgent; also names the plist file
+    # (~/Library/LaunchAgents/<label>.plist) and the launchctl service target.
+    service_label: str = "com.jarvis.voice"
+    # Where the LaunchAgent writes stdout/stderr (created on install).
+    service_log_dir: Path = Field(default_factory=_default_service_log_dir)
 
     # --- Observability -----------------------------------------------------
     log_level: str = "INFO"
