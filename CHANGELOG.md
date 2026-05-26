@@ -22,6 +22,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `wake_threshold`. Setting `JARVIS_LOG_LEVEL=DEBUG` emits per-frame RMS +
   wake-score instrumentation during SPEAKING.
 
+### Documentation
+
+- Added `CLAUDE.md`, an onboarding guide for Claude Code: the voice-cascade
+  architecture, the common commands, the non-negotiable conventions, and the two
+  gotchas worth flagging (the `PreToolUse` exit-2 deny protocol and the
+  `stream-json` + `--verbose` requirement).
+- Corrected `CONTRIBUTING.md` to state the coverage gate as **85%** (the value
+  enforced in `pyproject.toml`); it previously still said 80%.
+
 ### Fixed
 
 - G4.0 concurrent audio I/O: the live barge-in watcher no longer opens a second
