@@ -2,11 +2,12 @@
 
 - **Status:** In progress — **G4.0** (wake-phrase barge-in), **G4.1** (launchd
   service lifecycle, ADR-0006), the **always-on wake-word runtime** (the entry
-  point the service runs, verified live), and **G4.6** (smooth streaming
-  playback) are done as of 2026-05-26. `jarvis run` now defaults to a headless
-  wake-word cascade that plays multi-sentence replies gaplessly. The remaining
-  daemon/release goals (G4.2 cold start, G4.3 soak, G4.4 config-driven, G4.5
-  release) are still ahead; G4.2/G4.3 now have the always-on loop to measure.
+  point the service runs, verified live), **G4.6** (smooth streaming playback),
+  and **G4.2** (cold start) are done as of 2026-05-26. `jarvis run` now defaults
+  to a headless wake-word cascade that plays multi-sentence replies gaplessly and
+  is ready for "hey jarvis" in ~1 s (the heavy loads warm in the background). The
+  remaining daemon/release goals (G4.3 soak, G4.4 config-driven, G4.5 release) are
+  still ahead; the always-on loop is the thing G4.3 soaks.
 - **Milestone:** Phase 4
 - **Objective:** Make Jarvis a dependable always-on background service and cut
   the first release.
@@ -88,7 +89,7 @@ the injected detector scores as the wake phrase → `on_onset` once; returns on 
 |----|--------|--------|--------------|
 | G4.0 | Pre-Phase 4: wake-phrase-gated barge-in | Only "hey jarvis" interrupts playback; ambient/other-voice/self speech does not; no CoreAudio `-50` during SPEAKING | `tests/test_barge_in.py` + live shared-stream probe |
 | G4.1 | Service lifecycle | Installs, auto-starts, survives logout/login; clean uninstall | manual + `tests/test_service_unit.py` |
-| G4.2 | Cold start | Boot → ready-for-wake-word ≤ 10 s | `scripts/bench_latency.py` |
+| G4.2 | Cold start | Boot → ready-for-wake-word ≤ 10 s | `scripts/bench_latency.py --mode cold_start` |
 | G4.3 | Stability soak | 1-hour idle: 0 crashes, memory growth ≤ 50 MB | soak run recorded |
 | G4.4 | Config-driven | Voice/model/permission mode changeable via `.env` only | `tests/test_config_drives_runtime.py` |
 | G4.5 | Release | `v1.0.0` tagged; CHANGELOG finalized; coverage ≥ 85% | release workflow run |
@@ -306,3 +307,66 @@ render time was dead air). One architectural change fixes both.
 
 **Note (separate, persona tuning):** the 3-sentence replies ran ~90–95 words, over
 the persona's ≤ 50-word target — a G3.2 prompt-tuning item, independent of playback.
+
+### G4.2 — cold start · _Done 2026-05-26_
+
+Boot → ready-for-wake-word, measured by `scripts/bench_latency.py --mode
+cold_start`. "Ready" is defined precisely as the moment the always-on loop can
+block in `wait_for_wake` on a working mic and hear "hey jarvis" — **not**
+full-cascade warm.
+
+**Measured first (the goal said measure before fixing).** The new cold-start mode
+times each component's real construction. In the `wake_word` runtime only the
+persistent mic and the openWakeWord listener gate readiness; the Silero VAD
+endpointer, Kokoro synthesizer, and the barge-in watcher's second openWakeWord
+model are needed only *after* a wake. Live (warm cache, AirPods absent):
+
+- `ready_s` (mic + openWakeWord wake gate) = **0.88 s**
+- deferred: Silero VAD 0.59 s, **Kokoro 3.38 s**, barge-in openWakeWord 0.12 s
+- full warm cost if loaded eagerly = **4.97 s** (≈5.6 s including interpreter +
+  import boot)
+
+So warm steady-state was already under the 10 s target even fully eager; the
+earlier "~15–20 s observed" was almost certainly first-run Hugging Face model
+downloads and cold-cache reads, not steady state. But `cli.run` built everything
+eagerly *before* declaring readiness, so production's true ready was ~5.6 s (and
+the dominant `import torch` + Kokoro load is exactly the part that balloons on a
+cold cache / fresh boot). The fix gates readiness on the wake path alone — which
+carries no torch at all — and warms the rest in the background.
+
+**Delivered.**
+
+- `jarvis.loop.Lazy[T]` — a thread-safe build-once-on-first-use cell — and
+  `warm_in_background(*lazies)`, which builds them on a daemon thread.
+  `jarvis.cli.run` now builds only the persistent mic and the openWakeWord wake
+  gate eagerly, prints "Jarvis is ready", then warms the deferred components
+  (Kokoro, the Silero VAD record-turn, the barge-in watcher) in the background.
+  The `synthesize` / `record_turn` / `watch_barge_in` seams pull their backing
+  object through `Lazy.get()`, so a turn that starts before warm-up finishes
+  simply blocks on the lock instead of racing or double-building. `VoiceLoop` and
+  the injected-seam pattern are unchanged — the deferral wraps the *builders*, not
+  the loop.
+
+**Verification:**
+
+- Write-first tests: `tests/test_bench_cold_start.py` (readiness counts only the
+  mic + wake listener; the deferred breakdown never inflates `ready_s`; each
+  component built once; the runner aggregates readiness into a `LatencyResult`;
+  the summary names the target, PASS/FAIL, and the deferred components) and
+  `tests/test_warmup.py` (`Lazy` builds once and caches, is thread-safe under 8-way
+  contention, and `warm_in_background` builds every cell on a daemon thread without
+  rebuilding on later use). Full suite **254 passed, 97% coverage**; the live
+  native wiring stays `# pragma: no cover`.
+- **Live, real production path (2026-05-26).** `python -m jarvis run` (the launchd
+  entry point) reached "Jarvis is ready" in **0.96 s** (warm cache). Only the
+  onnxruntime/openWakeWord init logs before the ready line — the torch + Kokoro
+  load logs now appear *after* it, on the background warm-up thread, confirming
+  they are off the critical path. A separate off-thread build check warmed Kokoro
+  + Silero + openWakeWord via `warm_in_background` in **4.78 s** with no error and
+  produced valid 24 kHz audio from the deferred Kokoro synth — clearing the
+  thread-safety risk of constructing the native models off the main thread.
+- **Owed (interactive, needs Ty):** a spoken first-turn check on a true cold boot
+  (reboot, cold file cache) — say "hey jarvis" within the first second and confirm
+  the first capture/reply still works while warm-up is in flight. The mechanism is
+  proven (ready fast, warm-up completes off-thread, first-use blocks correctly),
+  but the cold-cache wall-clock and the live first turn are Ty's to confirm.

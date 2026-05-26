@@ -27,6 +27,7 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any, cast
 
 from jarvis.audio import Clip, FrameSource, Speaker, resample_mono_pcm16
 from jarvis.brain import SentenceStreamer
@@ -61,6 +62,53 @@ TokenStream = Callable[[str], Iterator[str]]
 #: returning early if ``stop`` is set first (SPEAKING ended on its own).
 #: Injected so tests fire barge-in on demand without a microphone.
 BargeInWatcher = Callable[[Callable[[], None], threading.Event], None]
+
+
+class Lazy[T]:
+    """Build a value once, on first use, thread-safe — for deferred cold-start loads.
+
+    The always-on cold start (G4.2) gates readiness on the wake detector alone:
+    only the persistent mic and the openWakeWord listener must be live to hear
+    "hey jarvis". The heavier components — Silero VAD, Kokoro, the barge-in
+    watcher's second openWakeWord model, and the ``import torch`` they pull in —
+    are needed only *after* a wake, so ``jarvis.cli.run`` wraps them in ``Lazy``
+    and warms them in the background once the wake gate is up
+    (:func:`warm_in_background`). ``get`` builds on first call and caches under a
+    lock, so the background warm and a first real use serialize rather than race:
+    a turn that starts before warm-up finishes simply blocks until the build is
+    done instead of double-building.
+    """
+
+    def __init__(self, build: Callable[[], T]) -> None:
+        self._build = build
+        self._lock = threading.Lock()
+        self._value: T | None = None
+        self._ready = False
+
+    def get(self) -> T:
+        """Return the value, building it once on first call (blocking if mid-build)."""
+        with self._lock:
+            if not self._ready:
+                self._value = self._build()
+                self._ready = True
+            return cast(T, self._value)
+
+
+def warm_in_background(*lazies: Lazy[Any], name: str = "jarvis-warmup") -> threading.Thread:
+    """Build every ``lazy`` on a daemon thread; return the thread (joinable in tests).
+
+    Called after the wake gate is up and the ready message is printed, so the
+    multi-second Kokoro + torch loads overlap the user's walk-up-and-speak time
+    rather than blocking readiness (G4.2).
+    """
+
+    def _warm() -> None:
+        for lazy in lazies:
+            lazy.get()
+
+    thread = threading.Thread(target=_warm, name=name, daemon=True)
+    thread.start()
+    return thread
 
 
 class State(StrEnum):
