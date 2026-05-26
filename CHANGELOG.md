@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 3 voice persona (G3.2): new `jarvis.persona` module owns the voice-mode
+  system prompt (`VOICE_SYSTEM_PROMPT`, the speakable-output contract from
+  `docs/voice-persona.md`: concise ≤ 50 words, never read code/paths/output aloud,
+  lead with the decision-relevant point, confirm destructive actions first, in an
+  advisor — not butler — register). It is injected into `Brain._base_argv` as
+  `--append-system-prompt`, so it rides on **both** `Brain.ask` and `Brain.stream`
+  (the path the loop uses). The module also owns the **pure** G3.2 metric
+  (`evaluate_persona` → `PersonaReport`): over a set of replies it reports the
+  fraction within the 50-word cap and the count still leaking a code fence, both
+  measured on the *speakable* text (`extract_speakable` first) — a surviving
+  (unclosed) fence is flagged as code reaching TTS. The metric is 100%-covered and
+  CI-tested over committed exemplars; it cannot prove Claude *obeys* the prompt, so
+  `scripts/eval_persona.py` runs 20 **neutral** factual prompts through the real
+  `claude` (injected runner; fresh context-free session each) and records the
+  distribution. **Live result (20 prompts, 2026-05-25): 100% (20/20) ≤ 50 words,
+  0 code leaked — G3.2 PASS** (full attribution in the Phase 3 doc Outcomes). The
+  recorded set is gitignored, so `test_persona_eval.py`'s live assertion skips in
+  CI while the metric and flag-wiring tests stay green.
 - Phase 3 barge-in (G3.1): the `SPEAKING` state is now cancellable. The `Speaker`
   protocol gains `stop()` (real impl `sd.stop()`) so the consumer can abort a clip
   *mid-utterance*, and `jarvis.vad` gains `OnsetDetector` — the rising-edge

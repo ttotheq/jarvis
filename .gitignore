@@ -36,6 +36,8 @@ samples/
 # Synthetic wake-word fixtures (regenerable via scripts/gen_wakeword_fixtures.py)
 tests/fixtures/wakeword/*.wav
 tests/fixtures/wakeword/manifest.json
+# Live persona-eval capture (regenerable via scripts/eval_persona.py --record)
+tests/fixtures/persona/recorded.json
 
 # OS / editor
 .DS_Store

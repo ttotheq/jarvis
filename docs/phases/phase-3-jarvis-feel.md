@@ -1,6 +1,6 @@
 # Phase 3 — Jarvis feel
 
-- **Status:** In progress — G3.1 (barge-in) done; G3.2/G3.3 remain
+- **Status:** In progress — G3.1 (barge-in) and G3.2 (persona) done; G3.3 remains
 - **Milestone:** Phase 3
 - **Objective:** Turn a working voice loop into something that feels like Jarvis:
   you can interrupt him, he's concise and in-character, and he asks before doing
@@ -83,3 +83,51 @@ hardware the practical mitigations are a higher onset threshold, output ducking,
 or AEC — to be evaluated when the live loop is exercised end-to-end. The unit
 budget (onset → `stop()`) is pure compute and trivially within 300 ms; the live
 floor is one Silero frame (~32 ms) plus `sd.stop()`, measured manually.
+
+### G3.2 — Voice persona (spoken conciseness, no code aloud) · _Done_
+
+New `jarvis.persona` owns the voice-mode system prompt (`VOICE_SYSTEM_PROMPT`,
+the speakable-output contract from `docs/voice-persona.md`) and the **pure** G3.2
+metric. The prompt is injected into `Brain._base_argv` as
+`--append-system-prompt`, so it rides on **both** call shapes — `ask()` and the
+`stream()` path the loop actually uses (asserted flag-relative in
+`tests/test_persona_eval.py`).
+
+The split between what CI can prove and what only a live run can:
+
+- **CI proves the metric and the wiring, not obedience.** `evaluate_persona`
+  reduces each reply with `extract_speakable` first, then measures the fraction
+  within the 50-word cap and the count still carrying a code fence (a *surviving*
+  fence = code that would reach TTS). It is 100%-covered and exercised over a
+  committed exemplar set plus crafted pass/fail cases. CI also asserts both argv
+  carry the flag. CI cannot prove Claude *obeys* the prompt — the recorded live
+  set is gitignored, so `test_persona_eval_skips_without_recorded_set` skips.
+- **The live eval is the judge.** `scripts/eval_persona.py` runs 20 **neutral,
+  factual** throwaway prompts (no vault, no tools) through
+  `claude -p --append-system-prompt <persona> --output-format json`, a fresh
+  session each (no `--resume`, `--permission-mode default`), and feeds the real
+  replies to the same metric.
+
+**Live measurement (20 neutral prompts, recorded 2026-05-25):**
+
+| Metric | Target | Measured |
+|--------|--------|----------|
+| Replies ≤ 50 words (on speakable text) | ≥ 90% | **100% (20/20)** |
+| Replies leaking code to TTS | 0 | **0** |
+| G3.2 verdict | PASS | **PASS** |
+
+Replies were concise and in-register — e.g. *"Paris, sir."*; *"Jupiter, sir — by
+a comfortable margin, more massive than all the other planets combined."* The
+distribution ran well inside the cap (most replies 2–15 words), so the ≥ 90%
+target had ample headroom on factual prompts. Re-run with
+`uv run python scripts/eval_persona.py --record`.
+
+**Caveats / scope.** The eval prompts are factual one-liners; they exercise
+conciseness and the no-code rule but not the harder advisor behaviours
+(volunteering a risk, pushing back, confirming a destructive action) — those are
+in the prompt but not in this metric, and genuine *anticipation* is explicitly
+deferred past Phase 3 (`docs/voice-persona.md`). The no-code guard has a real
+asymmetry the metric makes conservative: `extract_speakable` strips *paired*
+fences but an *unclosed* fence survives whole-string extraction (the streaming
+`SentenceStreamer` withholds it instead), so the metric flags a surviving fence
+as leaked — the stricter, correct call for the whole-string path.

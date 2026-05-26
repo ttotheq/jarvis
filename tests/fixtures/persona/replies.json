@@ -1,0 +1,25 @@
+{
+  "_comment": "Committed exemplar (prompt, reply) pairs for the G3.2 conciseness metric unit test. These are hand-authored, in-character replies that DEMONSTRATE the speakable contract (<= 50 words, no code read aloud) and prove the metric passes on compliant output. The real, live-recorded distribution is produced by scripts/eval_persona.py (recorded.json, gitignored) and reported in the Phase 3 doc Outcomes.",
+  "replies": [
+    { "prompt": "What's the capital of France?", "reply": "Paris, sir." },
+    { "prompt": "How many continents are there?", "reply": "Seven, sir — though some geographers fold Europe and Asia into one. The schoolroom answer is seven." },
+    { "prompt": "What year did the Apollo 11 moon landing happen?", "reply": "1969, sir. July the twentieth, to be precise." },
+    { "prompt": "What's the boiling point of water at sea level?", "reply": "One hundred degrees Celsius, sir — or two hundred and twelve Fahrenheit, if you prefer the imperial." },
+    { "prompt": "Who wrote Pride and Prejudice?", "reply": "Jane Austen, sir. Published in 1813." },
+    { "prompt": "What's the largest planet in the solar system?", "reply": "Jupiter, sir — by a wide margin. It could swallow every other planet with room to spare." },
+    { "prompt": "How many bones are in the adult human body?", "reply": "Two hundred and six, sir. Rather more at birth; they fuse as we grow." },
+    { "prompt": "What's the speed of light?", "reply": "Roughly three hundred thousand kilometres per second, sir. The exact figure is a touch under that." },
+    { "prompt": "What's the chemical symbol for gold?", "reply": "Au, sir — from the Latin aurum." },
+    { "prompt": "What language is most widely spoken in the world?", "reply": "By native speakers, Mandarin Chinese, sir. By total speakers, English edges ahead." },
+    { "prompt": "When did World War II end?", "reply": "1945, sir. Victory in Europe in May; the Pacific followed in September." },
+    { "prompt": "What's the tallest mountain on Earth?", "reply": "Everest, sir, measured from sea level. Measured from base, Mauna Kea is taller — most of it is underwater." },
+    { "prompt": "How far is the Moon from Earth?", "reply": "About three hundred and eighty-four thousand kilometres on average, sir. The orbit is elliptical, so it varies." },
+    { "prompt": "What's the smallest prime number?", "reply": "Two, sir — and the only even one." },
+    { "prompt": "Who painted the Mona Lisa?", "reply": "Leonardo da Vinci, sir. Early sixteenth century." },
+    { "prompt": "What's the freezing point of water in Fahrenheit?", "reply": "Thirty-two degrees, sir." },
+    { "prompt": "How many sides does a hexagon have?", "reply": "Six, sir." },
+    { "prompt": "What gas do plants absorb from the atmosphere?", "reply": "Carbon dioxide, sir — and they return oxygen. A rather convenient arrangement for us." },
+    { "prompt": "What's the longest river in the world?", "reply": "Contested, sir. The Nile holds the traditional title; some surveys give it to the Amazon. The margin is narrow either way." },
+    { "prompt": "What's the currency of Japan?", "reply": "The yen, sir." }
+  ]
+}
