@@ -41,8 +41,14 @@ state machine:
 | `THINKING` | STT then `claude -p` (streaming) | first speakable sentence ready → `SPEAKING` |
 | `SPEAKING` | TTS playback (mic stays hot) | playback done → `IDLE`; wake phrase detected → barge-in → `LISTENING` |
 
-Streaming overlaps `THINKING` and `SPEAKING`: TTS begins on the first complete
-sentence from Claude rather than waiting for the full response.
+Streaming overlaps `THINKING` and `SPEAKING` as a three-stage pipeline
+(`tokens → sentences → audio → speaker`): TTS begins on the first complete
+sentence from Claude rather than waiting for the full response, and a synth stage
+renders sentence N+1 while N is still playing so multi-sentence replies have no
+inter-sentence gap (G4.6). Playback uses one persistent output stream
+(`SoundDeviceStreamingSpeaker`) written clip-by-clip — gapless, with no
+per-sentence Bluetooth renegotiation — drained on a clean finish and aborted on
+barge-in.
 
 During `SPEAKING` the mic stays hot. The live watcher now reuses
 `jarvis.wakeword`: a persistent input stream stays open across LISTENING capture

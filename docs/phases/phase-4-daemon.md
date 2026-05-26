@@ -1,11 +1,12 @@
 # Phase 4 — Daemon polish
 
 - **Status:** In progress — **G4.0** (wake-phrase barge-in), **G4.1** (launchd
-  service lifecycle, ADR-0006), and the **always-on wake-word runtime** (the
-  entry point the service runs) are done as of 2026-05-26. `jarvis run` now
-  defaults to a headless wake-word cascade. The remaining daemon/release goals
-  (G4.2 cold start, G4.3 soak, G4.4 config-driven, G4.5 release) are still ahead;
-  G4.2/G4.3 now have the always-on loop they need to measure against.
+  service lifecycle, ADR-0006), the **always-on wake-word runtime** (the entry
+  point the service runs, verified live), and **G4.6** (smooth streaming
+  playback) are done as of 2026-05-26. `jarvis run` now defaults to a headless
+  wake-word cascade that plays multi-sentence replies gaplessly. The remaining
+  daemon/release goals (G4.2 cold start, G4.3 soak, G4.4 config-driven, G4.5
+  release) are still ahead; G4.2/G4.3 now have the always-on loop to measure.
 - **Milestone:** Phase 4
 - **Objective:** Make Jarvis a dependable always-on background service and cut
   the first release.
@@ -91,6 +92,7 @@ the injected detector scores as the wake phrase → `on_onset` once; returns on 
 | G4.3 | Stability soak | 1-hour idle: 0 crashes, memory growth ≤ 50 MB | soak run recorded |
 | G4.4 | Config-driven | Voice/model/permission mode changeable via `.env` only | `tests/test_config_drives_runtime.py` |
 | G4.5 | Release | `v1.0.0` tagged; CHANGELOG finalized; coverage ≥ 85% | release workflow run |
+| G4.6 | Smooth streaming playback | Multi-sentence replies play gaplessly — no inter-sentence gaps, boundary clicks, or clipped sentence-starts | `tests/test_playback_pipeline.py` + live multi-sentence check |
 
 ## Test plan (write first)
 
@@ -240,11 +242,60 @@ self-sustains under the service. This unblocks **G4.2** (cold start) and **G4.3*
   plus `run_mode` parsing in `tests/test_config.py`. Full suite **235 passed, 97%
   coverage**; `jarvis.loop` at 95% (only the native builders + pre-existing
   barge-in live branches excluded).
-- **Live mic check is deferred:** speaking "hey jarvis" → wake → VAD endpoint →
-  reply → return to IDLE needs the mic + `--extra voice` stack and is the manual
-  step (it will also become the basis for the G4.2/G4.3 measurements). The native
-  `build_wait_for_wake` / `build_vad_record_turn` shims carry `# pragma: no cover`.
+- **Live mic check — PASSED (2026-05-26).** Across four real-mic runs the loop
+  woke on "hey jarvis" (scores 0.95–0.99), VAD-endpointed the utterance,
+  transcribed it accurately ("What is two plus two?", "What is 4 plus 4?", the
+  Bluetooth-profiles prompt), replied in-character via real `claude` + Kokoro
+  ("Four, sir.", "8.", a 3-sentence answer), and exited cleanly — confirming
+  `IDLE → LISTENING → THINKING → SPEAKING → IDLE` end to end. The native
+  `build_wait_for_wake` / `build_vad_record_turn` shims stay `# pragma: no cover`.
+- **Audio-routing finding (AirPods):** because the loop holds the mic open
+  continuously, selecting AirPods as input forces them from A2DP to the HFP
+  headset profile, muffling TTS output. Mitigation is a **device split** — input
+  on the built-in mic (`JARVIS_INPUT_DEVICE="MacBook Air Microphone"`), output on
+  the AirPods (stays A2DP). This also removes the mic-hears-itself self-trigger
+  risk, since playback is then in-ear. (Led directly to G4.6 below.)
 
 **Deferred to a focused follow-up:** status chimes (ready/listening/thinking) — a
 Phase 4 in-scope item — ride cleanly on the new `on_state` `IDLE`/`LISTENING`
 transitions and are kept out of this change to keep it tight.
+
+### G4.6 — smooth streaming playback · _Done 2026-05-26_
+
+The live always-on check surfaced choppy multi-sentence playback: replies clicked
+at sentence boundaries, swallowed sentence-starts, and stalled with gaps. Root
+cause was two stacked problems — playback was a fresh `sd.play` per sentence (so
+Bluetooth A2DP renegotiated at every boundary → clicks + clipped starts), and
+synthesis was serialized with playback in one thread (so each new sentence's
+render time was dead air). One architectural change fixes both.
+
+- **Persistent output stream.** New `jarvis.audio.SoundDeviceStreamingSpeaker`
+  holds a single `RawOutputStream` open across the session and writes each clip
+  into it, so back-to-back sentences are one continuous stream (no per-sentence
+  renegotiation, no clipped starts). `wait()` drains buffered audio at end of turn
+  (PortAudio `stop`); `stop()` aborts immediately for barge-in (PortAudio
+  `abort`); `close()` tears it down. `build_default_speaker` now returns it, and
+  `jarvis.cli.run` closes it on exit alongside the persistent mic. The dead
+  per-clip `SoundDeviceSpeaker` was removed.
+- **Synthesis pipelined ahead of playback.** `jarvis.loop._think_and_speak` is now
+  a three-stage pipeline — `tokens → sentences → audio → speaker` — with a new
+  synth thread rendering sentence N+1 while N plays, so there is no inter-sentence
+  gap. On a clean finish the consumer drains the speaker (optional `wait`); on
+  barge-in the cancel flag stops every stage and the speaker is aborted.
+
+**Verification:**
+
+- Write-first tests in `tests/test_playback_pipeline.py`: synthesis runs ahead of
+  playback, the speaker is drained on a clean finish (and not when nothing is
+  spoken), it is aborted — not drained — on barge-in, and a synth-stage error
+  propagates instead of hanging. Existing `test_loop_streaming.py` /
+  `test_barge_in.py` / `test_loop.py` stayed green (the G2.4 overlap and G3.1
+  barge-in/latency contracts are unchanged). Full suite **240 passed, 97%
+  coverage**; the real streaming speaker is the only `# pragma: no cover` piece.
+- **Live (2026-05-26):** the same three-sentence Bluetooth-profiles prompt that
+  previously clicked and stalled now plays **gaplessly** on the built-in speakers
+  (input on the built-in mic, wake score 0.974). The persistent single stream also
+  removes the per-sentence A2DP renegotiation that caused the AirPods clicks.
+
+**Note (separate, persona tuning):** the 3-sentence replies ran ~90–95 words, over
+the persona's ≤ 50-word target — a G3.2 prompt-tuning item, independent of playback.

@@ -31,7 +31,7 @@ from enum import StrEnum
 from jarvis.audio import Clip, FrameSource, Speaker, resample_mono_pcm16
 from jarvis.brain import SentenceStreamer
 from jarvis.stt import Transcriber
-from jarvis.tts import Synthesizer, speak
+from jarvis.tts import Synthesizer
 from jarvis.vad import (
     FRAME_BYTES as VAD_FRAME_BYTES,
 )
@@ -150,24 +150,29 @@ class VoiceLoop:
         )
 
     def _think_and_speak(self, transcript: str) -> _SpeakResult:
-        """Overlap THINKING and SPEAKING; cancel both on barge-in (G2.4 + G3.1).
+        """Overlap THINKING and SPEAKING as a pipeline; cancel on barge-in (G2.4/G3.1/G4.6).
 
-        The producer thread pulls token deltas, segments them with
-        :class:`SentenceStreamer`, and queues complete sentences; this (consumer)
-        thread speaks them in order. A ``None`` sentinel marks end-of-stream. A
-        producer exception is captured and re-raised here so the caller sees it.
+        Three stages run concurrently so a multi-sentence reply plays as one
+        continuous utterance: a **producer** pulls token deltas and segments them
+        into sentences (:class:`SentenceStreamer`); a **synth** stage renders each
+        sentence to audio *ahead* of playback; and this (consumer) thread plays
+        the rendered clips in order. Decoupling synthesis from playback means
+        sentence N+1 is ready the instant N finishes, so there is no inter-sentence
+        gap. A ``None`` sentinel flows down each stage to mark end-of-stream; a
+        producer or synth exception is captured and re-raised here.
 
-        When a barge-in watcher is wired, a hot-mic thread runs during SPEAKING.
-        Once the watcher decides the user intentionally interrupted, it aborts the
-        in-flight clip (``speaker.stop()``, so latency is bounded by ``stop``
-        rather than the sentence length) and sets a cancel flag; the consumer then
-        stops and the producer breaks its loop and closes the token stream — in
-        :class:`~jarvis.brain.Brain.stream` that terminates the ``claude`` child.
-        The onset/halt timestamps come from the injected clock.
+        On a clean finish the consumer drains the speaker (optional ``wait``) so
+        buffered audio is heard before the turn ends. When a barge-in watcher is
+        wired and fires, it sets a cancel flag and aborts the speaker
+        (``speaker.stop()``, so latency is bounded by the abort rather than the
+        clip length); every stage then unwinds and the producer closes the token
+        stream — in :class:`~jarvis.brain.Brain.stream` that terminates the
+        ``claude`` child. The onset/halt timestamps come from the injected clock.
         """
         sentences: queue.Queue[str | None] = queue.Queue()
+        clips: queue.Queue[tuple[str, Clip] | None] = queue.Queue()
         error: list[BaseException] = []
-        cancel = threading.Event()  # set on barge-in: stop consumer + producer
+        cancel = threading.Event()  # set on barge-in: stop every stage
         done_speaking = threading.Event()  # set when SPEAKING ends: stop the watcher
         token_stream = self.stream(transcript)
 
@@ -191,7 +196,7 @@ class VoiceLoop:
                 # Owning thread closes the generator: GeneratorExit unwinds
                 # Brain.stream and terminates the claude child. Plain iterators
                 # (e.g. in tests) have no close(); the sentinel is sent regardless
-                # so the consumer never blocks waiting for it.
+                # so the synth stage never blocks waiting for it.
                 try:
                     closer = getattr(token_stream, "close", None)
                     if callable(closer):
@@ -199,18 +204,38 @@ class VoiceLoop:
                 finally:
                     sentences.put(None)  # end-of-stream sentinel
 
+        def synthesize_ahead() -> None:
+            # Render each sentence to audio before playback needs it. Empty
+            # sentences are skipped (never voiced); the None sentinel is forwarded
+            # so the consumer can stop.
+            try:
+                while not cancel.is_set():
+                    sentence = sentences.get()
+                    if sentence is None:
+                        break
+                    if cancel.is_set():
+                        break
+                    if sentence.strip():
+                        clips.put((sentence, self.synthesize(sentence)))
+            except BaseException as exc:  # re-raised on the consumer thread
+                error.append(exc)
+            finally:
+                clips.put(None)  # end-of-stream sentinel for the consumer
+
         def trigger_barge_in() -> None:
             nonlocal onset_at, halt_at
             onset_at = self.clock()
-            # Set the flag *before* aborting the clip: stop() unblocks the
-            # consumer's play(), so cancel must already be visible or the consumer
-            # could grab the next sentence before it sees the interrupt.
+            # Set the flag *before* aborting: stop() unblocks the consumer's play(),
+            # so cancel must already be visible or the consumer could grab the next
+            # clip before it sees the interrupt.
             cancel.set()
-            self.speaker.stop()  # abort the in-flight clip to bound latency
+            self.speaker.stop()  # abort buffered audio to bound latency
             halt_at = self.clock()
 
         producer = threading.Thread(target=produce, name="jarvis-brain-stream", daemon=True)
+        synth = threading.Thread(target=synthesize_ahead, name="jarvis-tts-synth", daemon=True)
         producer.start()
+        synth.start()
 
         watcher: threading.Thread | None = None
         if self.watch_barge_in is not None:
@@ -226,18 +251,26 @@ class VoiceLoop:
         speaking = False
         try:
             while not cancel.is_set():
-                sentence = sentences.get()
-                if sentence is None or cancel.is_set():
+                item = clips.get()
+                if item is None or cancel.is_set():
                     break
+                sentence, clip = item
                 if not speaking:
                     self._enter(State.SPEAKING)
                     speaking = True
-                speak(sentence, self.synthesize, self.speaker)
+                self.speaker.play(clip)
                 spoken.append(sentence)
         finally:
-            cancel.set()  # idempotent: also unblocks the producer's token loop
+            # On a clean finish, drain buffered audio before leaving SPEAKING; on
+            # barge-in (cancel already set) the speaker was aborted instead.
+            if speaking and not cancel.is_set():
+                drain = getattr(self.speaker, "wait", None)
+                if callable(drain):
+                    drain()
+            cancel.set()  # idempotent: also unblocks the producer + synth stages
             done_speaking.set()  # release the watcher if it is still waiting
             producer.join()
+            synth.join()
             if watcher is not None:
                 watcher.join(timeout=1.0)
 
