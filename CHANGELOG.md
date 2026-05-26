@@ -8,6 +8,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 3 spoken permission gating (G3.3): new `jarvis.permissions` module is a
+  Claude Code `PreToolUse` hook that routes destructive tool calls to a spoken
+  yes/no confirmation **before** they run, making the persona's "confirm
+  destructive actions verbally" promise mechanical. It is required because the
+  brain runs `--permission-mode acceptEdits` (ADR-0003) and the headless `claude -p`
+  child has no human to approve a Bash call — so a destructive `rm -rf` or
+  `git push` would otherwise run unattended. The pure `is_destructive(tool_name,
+  tool_input)` inspects Bash commands (splitting compound chains, stripping
+  `sudo`/env/wrappers) and flags an explicit irreversible-verb set —
+  `rm`/`rmdir`/`shred`/`dd`/`mkfs`/`truncate`, process/power control, `git
+  push`/`git clean`/`git reset --hard`/`git branch -D`/`git checkout --force`, and
+  any privilege escalation — while read-only calls (`ls`, `cat`, `git status`,
+  non-`--hard` reset, all non-Bash tools) never gate. `decide(payload, confirm)`
+  consults the injected `confirm` seam **before** forming the Claude Code decision
+  (`hookSpecificOutput.permissionDecision` `allow`/`deny`); `main` parses the
+  `PreToolUse` payload from stdin and writes the decision JSON to stdout. Three
+  safety biases: the gate **denies on doubt** (`interpret_confirmation` defaults to
+  No — a negative word anywhere wins, silence/ambiguity deny), **speaks intent not
+  the command** ("You're about to delete files, sir — shall I?", no paths/flags
+  read aloud), and **never gates read-only**. The classifier + decision emission +
+  stdin/stdout entrypoint are **100%-covered** with a fake `confirm` (suite at 99%,
+  G3.4); the live audio `confirm` (`build_live_confirm`: Kokoro speaks, mic +
+  whisper.cpp hear) and the `settings.json` Bash-matcher registration are the manual
+  integration step — full attribution and the hook snippet in the Phase 3 doc
+  Outcomes. Classification is an explicit verb allow-list (a guardrail against the
+  common cases), not a sandbox.
 - Phase 3 voice persona (G3.2): new `jarvis.persona` module owns the voice-mode
   system prompt (`VOICE_SYSTEM_PROMPT`, the speakable-output contract from
   `docs/voice-persona.md`: concise ≤ 50 words, never read code/paths/output aloud,

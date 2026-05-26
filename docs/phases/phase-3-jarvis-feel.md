@@ -1,6 +1,9 @@
 # Phase 3 — Jarvis feel
 
-- **Status:** In progress — G3.1 (barge-in) and G3.2 (persona) done; G3.3 remains
+- **Status:** Goals met — G3.1 (barge-in), G3.2 (persona), G3.3 (permission
+  gating) done; coverage 99% (G3.4). Remaining: the live end-to-end demo recording
+  (Definition of Done) — the unit contracts are proven; the audio path is wired
+  manually.
 - **Milestone:** Phase 3
 - **Objective:** Turn a working voice loop into something that feels like Jarvis:
   you can interrupt him, he's concise and in-character, and he asks before doing
@@ -131,3 +134,91 @@ asymmetry the metric makes conservative: `extract_speakable` strips *paired*
 fences but an *unclosed* fence survives whole-string extraction (the streaming
 `SentenceStreamer` withholds it instead), so the metric flags a surviving fence
 as leaked — the stricter, correct call for the whole-string path.
+
+### G3.3 — Spoken permission gating · _Done (metric); live wiring manual_
+
+New `jarvis.permissions` is a Claude Code `PreToolUse` hook: before a tool call
+runs, it classifies the call and — for destructive ones — routes a spoken yes/no
+confirmation, emitting the Claude Code `permissionDecision` (`allow`/`deny`). This
+makes the persona line *"confirm destructive or irreversible actions verbally
+before executing them"* mechanical rather than merely willed.
+
+Why the hook is necessary at all: the brain runs `--permission-mode acceptEdits`
+(ADR-0003), and the headless `claude -p` child has no human at a keyboard to
+approve a Bash call. Without the hook a destructive `rm -rf` or `git push` would
+run unattended. The hook is a **separate process** the `claude` child spawns — it
+cannot call the running loop's Speaker/STT in memory, which is the central design
+constraint (same cross-process split that shaped G3.2's metric-vs-live-eval).
+
+The split between what CI proves and what only a live run can:
+
+- **CI proves the pure classifier and the decision emission.** `is_destructive`
+  inspects a Bash command — splitting compound chains on `&&`/`||`/`;`/`|`, tokenising
+  each sub-command, stripping `sudo`/env/wrappers to the real program — and flags an
+  explicit set of irreversible verbs: `rm`/`rmdir`/`shred`/`dd`/`mkfs`/`truncate`,
+  process/power control (`kill`/`shutdown`/…), `git push`/`git clean`/`git reset
+  --hard`/`git branch -D`/`git checkout --force`, and any privilege escalation.
+  `decide(payload, confirm)` calls the injected `confirm` seam **before** forming a
+  verdict (affirmative → `allow`, anything else → `deny`); non-destructive calls are
+  `allow`ed without ever consulting `confirm`. `main` parses the `PreToolUse` JSON
+  from stdin and writes the decision JSON to stdout. All of this is 100%-covered with
+  a fake `confirm` — nothing in CI speaks, records, or spawns `claude`.
+- **The live audio wiring is the integration step.** `build_live_confirm` reuses the
+  cascade's own components — Kokoro speaks the question, the sounddevice mic +
+  whisper.cpp capture the answer, `interpret_confirmation` maps it to a go-ahead. It
+  is hardware-bound (excluded from coverage, ADR-0005) and exercised manually.
+
+**Three deliberate safety biases:**
+
+1. *Deny on doubt.* `interpret_confirmation` defaults to **No**: a negative word
+   anywhere wins ("yes — actually no, stop" → deny), an affirmative otherwise
+   allows, and silence/ambiguity/empty deny. The gate never auto-runs on
+   uncertainty.
+2. *Speak intent, not the command.* The spoken question is `"You're about to
+   {delete files / push to the remote / discard uncommitted changes}, sir — shall
+   I?"` — no command, flags, or paths read aloud (the persona's no-code-aloud rule
+   applies to the confirmation too).
+3. *Never gate read-only.* `ls`, `cat`, `git status`, `git log`, a non-`--hard`
+   `git reset`, and all non-Bash tools pass through silently — a confirmation
+   prompt on every benign command would wreck the voice UX.
+
+**The metric (G3.3): 100% of the destructive set gates before running, 0 auto-run**
+— proven in `tests/test_permission_gate.py` over the `rm -rf` / `git push` / `git
+reset --hard` cases (plus `git clean`, `git branch -D`, `sudo`, `dd`, compound
+chains), with the four required write-first tests green: classifier flags
+destructive vs. read-only; hook blocks until confirmed (`confirm`→False emits deny,
+→True allow, `confirm` called first); hook passes safe through without asking; hook
+reads stdin and emits the `permissionDecision` JSON.
+
+**Integration (manual).** Register the hook in the `settings.json` the spawned
+`claude` reads (project `.claude/settings.json` or user settings), scoped to the
+Bash matcher so read-only tools never reach it:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "uv run python -m jarvis.permissions" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+With `confirm` unset, `main` builds the live audio `confirm`, so the spawned hook
+speaks the question and hears the answer. This registration plus the end-to-end
+demo recording (Definition of Done) is the remaining manual step.
+
+**Caveats / scope.** Classification is an explicit destructive-verb allow-list, not
+a sandbox: a novel destructive command outside the set (e.g. an obscure CLI, an
+overwriting `>` redirection, `mv` over an existing file) is **not** caught — it runs
+exactly as it would without the gate. The set covers the irreversible verbs that
+matter in practice and errs toward asking (any `sudo`/`doas` gates), but it is a
+guardrail against the common cases, not a security boundary. A `git push` is gated
+as "destructive" though it is recoverable; that conservative call is intentional.
+The yes/no interpreter is keyword-based, so a creatively phrased answer may be read
+as ambiguous and (safely) denied — the user simply repeats.
