@@ -32,6 +32,9 @@ Documentation changes in the **same PR** as the code it describes — never "lat
   same change.
 - Phase docs (`docs/phases/`) are living: update the **Status** line and fill in
   the **Outcomes** section as work lands.
+- When a phase or goal closes, update **every** status surface that mentions it:
+  `README.md`, `docs/README.md`, `docs/phases/README.md`, the phase doc itself,
+  and any architecture notes whose claims changed.
 - Every PR adds an entry to the `## [Unreleased]` section of `CHANGELOG.md`
   ([Keep a Changelog](https://keepachangelog.com/) format).
 
@@ -59,5 +62,6 @@ uv run pre-commit install   # optional: run lint/format on every commit
 
 1. Tests written first, all green; coverage gate met.
 2. `make check` passes locally.
-3. Docs/ADR/`.env.example`/`CHANGELOG.md` updated as applicable.
+3. Docs/ADR/`.env.example`/`CHANGELOG.md` updated as applicable, including all
+   phase/status surfaces touched by the change.
 4. The linked issue's measurable acceptance criteria are satisfied.

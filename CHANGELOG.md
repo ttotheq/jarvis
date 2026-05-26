@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation/status alignment after Phase 3: the repo-level docs now reflect
+  that **Phase 3 is done**, **G4.0 is done**, Phase 4 is now in progress, the
+  default `jarvis run` path is still the development push-to-talk / timed-turn
+  harness, and the architecture doc now carries both the measured G2.3 latency
+  reality (spawn-per-turn baseline plus the persistent-brain forward target) and
+  the shipped wake-phrase barge-in topology. `CONTRIBUTING.md` and the
+  phase-plan overview now state explicitly that closing a phase means updating
+  every status surface in the same change.
+- G4.0 live barge-in: `jarvis run` now keeps one persistent microphone open
+  across LISTENING capture and SPEAKING, resamples frames to openWakeWord's
+  16 kHz geometry when needed, and only interrupts on `"hey jarvis"` using
+  `wake_threshold`. Setting `JARVIS_LOG_LEVEL=DEBUG` emits per-frame RMS +
+  wake-score instrumentation during SPEAKING.
+
 ### Documentation
 
 - Added `CLAUDE.md`, an onboarding guide for Claude Code: the voice-cascade
@@ -17,6 +33,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- G4.0 concurrent audio I/O: the live barge-in watcher no longer opens a second
+  input stream while Kokoro output is active, which was the Phase 3 cause of the
+  CoreAudio `||PaMacCore (AUHAL)|| err='-50'` and deterministic self-trigger.
+  Verified live on 2026-05-26 by reading 12 valid openWakeWord frames during a
+  24 kHz playback clip and 43 frames during a real Kokoro self-speech clip, both
+  with `errors=[]` and no `-50`.
 - Permission gate (G3.3) blocking protocol: the live end-to-end demo exposed that
   `claude` 2.1.150 does **not** block a tool when a `PreToolUse` hook emits
   `permissionDecision: "deny"` as stdout JSON — the tool runs anyway. `main` now
@@ -29,6 +51,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- G4.0 barge-in watcher tests: `test_barge_in_watcher_fires_on_wake_phrase` and
+  `test_barge_in_watcher_ignores_non_wake_speech` now pin the new wake-gated
+  watcher seam in `tests/test_barge_in.py`, while `tests/test_audio.py` gained
+  a PCM16 resampling check for the shared-stream path.
 - Phase 3 live end-to-end demo (`docs/phases/phase-3-demo.md`): the Definition-of-
   Done recording. The spoken permission gate (G3.3) and in-character replies (G3.2)
   were demonstrated audibly against the real `claude` brain + Kokoro + whisper.cpp;

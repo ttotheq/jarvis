@@ -5,23 +5,28 @@ A local-first, voice-controlled interface for [Claude Code](https://claude.com/c
 Jarvis is **not** a reimplementation of Claude Code. It is a thin, local voice cascade that uses the real Claude Code CLI as its brain:
 
 ```
-"Hey Jarvis" → mic → VAD → STT → claude (headless) → TTS → speakers
-                                        ↑ barge-in cancels in-flight speech + task
+push-to-talk / timed turn today → mic → STT → claude (headless) → TTS → speakers
+                                                      ↑ barge-in cancels in-flight speech + task
 ```
 
 Everything in the voice path runs on-device (Apple Silicon). The only thing that leaves the machine is the final text prompt to Claude — exactly as Claude Code already works.
 
 ## Status
 
-**Phase 1 shipped** — Jarvis holds a real push-to-talk spoken conversation: speak, it transcribes with whisper.cpp, asks Claude Code headlessly (keeping one session across turns), and speaks the reply with Kokoro. The voice runtime is built phase-by-phase under [`docs/phases/`](docs/phases/).
+**Phase 3 shipped, and G4.0 is in** — Jarvis streams Claude replies, speaks
+in-character, verbally gates destructive Bash actions before they run, and now
+only lets `"hey jarvis"` interrupt during `SPEAKING` on the live path. The
+default `jarvis run` command is still a development harness (Enter-gated
+push-to-talk or timed turns in non-interactive shells); the always-on wake-word
+daemon work remains in Phase 4.
 
 | Phase | Goal | Status |
 |------|------|--------|
 | [0 — Spike & de-risk](docs/phases/phase-0-spike.md) | Prove the local stack installs and Claude round-trips on this Mac | ✅ Done |
 | [1 — Walking skeleton](docs/phases/phase-1-skeleton.md) | Push-to-talk → STT → Claude → TTS, end to end | ✅ Done |
-| [2 — Wake word + streaming](docs/phases/phase-2-wakeword-streaming.md) | "Hey Jarvis" activation, sub-1.5 s response | 🚧 In progress |
-| [3 — Jarvis feel](docs/phases/phase-3-jarvis-feel.md) | Barge-in, persona, spoken permission gating | Not started |
-| [4 — Daemon polish](docs/phases/phase-4-daemon.md) | Always-on launchd service, v1.0.0 release | Not started |
+| [2 — Wake word + streaming](docs/phases/phase-2-wakeword-streaming.md) | Wake-word/VAD primitives, streaming, measured latency | ✅ Done |
+| [3 — Jarvis feel](docs/phases/phase-3-jarvis-feel.md) | Barge-in, persona, spoken permission gating | ✅ Done |
+| [4 — Daemon polish](docs/phases/phase-4-daemon.md) | G4.0 wake-phrase barge-in, launchd service, v1.0.0 release | In progress |
 
 Each phase has **measurable acceptance goals** ([overview](docs/phases/README.md)) designed to be tracked as Claude Code goals in later iterations.
 
@@ -49,7 +54,14 @@ uv run jarvis doctor                             # verify the stack (exit 0 when
 uv run jarvis run                                # push-to-talk: Enter to talk, Ctrl-C to quit
 ```
 
-`jarvis run` defaults to Enter-gated push-to-talk. In a non-interactive shell, set `JARVIS_PTT_SECONDS` (timed turns) and `JARVIS_MAX_TURNS` to run hands-free. Copy `.env.example` to `.env` to override any setting locally; nothing in `.env` is committed.
+`jarvis run` is still the development harness: it defaults to Enter-gated
+push-to-talk, and in a non-interactive shell you can set `JARVIS_PTT_SECONDS`
+(timed turns) plus `JARVIS_MAX_TURNS` to run hands-free. Its live barge-in path
+now shares one persistent mic between capture and `SPEAKING`, resamples to
+openWakeWord's 16 kHz frame geometry when needed, and only interrupts on
+`"hey jarvis"`. The always-on wake-word daemon is the remaining Phase 4 step.
+Copy `.env.example` to `.env` to override any setting locally; nothing in
+`.env` is committed.
 
 ## Architecture & decisions
 

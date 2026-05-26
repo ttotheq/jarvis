@@ -12,4 +12,6 @@
 Start with the [phase plan](phases/README.md). Each phase has measurable
 acceptance goals; the architecture and ADRs explain the system those phases
 build. Documentation is **iterative** — phase docs carry a live status and gain
-an "Outcomes" section as work lands (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
+an "Outcomes" section as work lands, and repo-level status surfaces (`README.md`,
+this index, the phase overview, and any affected architecture notes) are updated
+when a phase closes (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
