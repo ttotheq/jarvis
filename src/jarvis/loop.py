@@ -10,14 +10,16 @@ sentence one blocks, the producer keeps pulling and segmenting later tokens.
 
 Wake word (IDLE→LISTENING) and VAD endpointing (LISTENING→THINKING) are separate
 Phase 2 goals; here ``record_turn`` still captures one utterance. Barge-in is
-Phase 3 (G3.1): the mic stays hot during SPEAKING, and an injected onset watcher
-can cancel playback and the in-flight ``claude`` stream mid-sentence, returning to
-LISTENING. Every edge is injected, so the machine is tested without hardware
-(tests/test_loop*.py, tests/test_barge_in.py).
+Phase 3's cancellable SPEAKING state, tightened in G4.0 so the hot mic only
+interrupts on the wake phrase while Jarvis is talking. Every edge is injected,
+so the machine is tested without hardware (tests/test_loop*.py,
+tests/test_barge_in.py).
 """
 
 from __future__ import annotations
 
+import logging
+import math
 import queue
 import threading
 import time
@@ -25,18 +27,29 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 
-from jarvis.audio import Clip, Speaker
+from jarvis.audio import Clip, FrameSource, Speaker, resample_mono_pcm16
 from jarvis.brain import SentenceStreamer
 from jarvis.stt import Transcriber
 from jarvis.tts import Synthesizer, speak
+from jarvis.wakeword import (
+    FRAME_BYTES as WAKEWORD_FRAME_BYTES,
+)
+from jarvis.wakeword import (
+    SAMPLE_RATE as WAKEWORD_SAMPLE_RATE,
+)
+from jarvis.wakeword import (
+    WakeWordListener,
+)
+
+logger = logging.getLogger(__name__)
 
 #: A token stream: a prompt in, assistant text deltas out (``Brain.stream``).
 TokenStream = Callable[[str], Iterator[str]]
 
 #: A barge-in watcher: given an ``on_onset`` callback and a ``stop`` event, it
-#: watches the hot mic and calls ``on_onset`` once on the first speech onset,
-#: returning early if ``stop`` is set first (SPEAKING ended on its own). Injected
-#: so tests fire onset on demand without a microphone.
+#: watches the hot mic and calls ``on_onset`` once on the wake phrase,
+#: returning early if ``stop`` is set first (SPEAKING ended on its own).
+#: Injected so tests fire barge-in on demand without a microphone.
 BargeInWatcher = Callable[[Callable[[], None], threading.Event], None]
 
 
@@ -81,8 +94,8 @@ class VoiceLoop:
     #: Optional observer notified on every state transition (used in tests).
     on_state: Callable[[State], None] | None = None
     #: Optional barge-in watcher; when set, the mic stays hot during SPEAKING and
-    #: speech onset cancels playback + the in-flight stream (G3.1). ``None`` keeps
-    #: the Phase 2 behaviour: SPEAKING runs to completion.
+    #: the wake phrase cancels playback + the in-flight stream (G3.1/G4.0).
+    #: ``None`` keeps the Phase 2 behaviour: SPEAKING runs to completion.
     watch_barge_in: BargeInWatcher | None = None
     #: Clock for barge-in latency (onset -> playback halted); injected in tests.
     clock: Callable[[], float] = time.perf_counter
@@ -126,13 +139,13 @@ class VoiceLoop:
         thread speaks them in order. A ``None`` sentinel marks end-of-stream. A
         producer exception is captured and re-raised here so the caller sees it.
 
-        When a barge-in watcher is wired, an onset thread runs on the hot mic. On
-        speech onset it aborts the in-flight clip (``speaker.stop()``, so latency
-        is bounded by ``stop`` rather than the sentence length) and sets a cancel
-        flag; the consumer then stops and the producer breaks its loop and closes
-        the token stream — in :class:`~jarvis.brain.Brain.stream` that terminates
-        the ``claude`` child. The onset/halt timestamps come from the injected
-        clock.
+        When a barge-in watcher is wired, a hot-mic thread runs during SPEAKING.
+        Once the watcher decides the user intentionally interrupted, it aborts the
+        in-flight clip (``speaker.stop()``, so latency is bounded by ``stop``
+        rather than the sentence length) and sets a cancel flag; the consumer then
+        stops and the producer breaks its loop and closes the token stream — in
+        :class:`~jarvis.brain.Brain.stream` that terminates the ``claude`` child.
+        The onset/halt timestamps come from the injected clock.
         """
         sentences: queue.Queue[str | None] = queue.Queue()
         error: list[BaseException] = []
@@ -227,28 +240,103 @@ class VoiceLoop:
         return turns
 
 
-def build_default_barge_in_watcher() -> BargeInWatcher:  # pragma: no cover - real mic + Silero
-    """Wire the live barge-in watcher: hot mic -> Silero onset detector.
+def _pcm16_rms(frame: bytes) -> float:
+    """A normalized RMS level for debug instrumentation of watcher input."""
+    samples = memoryview(frame).cast("h")
+    if not samples:
+        return 0.0
+    mean_square = sum(int(sample) * int(sample) for sample in samples) / len(samples)
+    return math.sqrt(float(mean_square)) / 32768.0
 
-    Reads 512-sample frames from the input device (Silero's required frame size)
-    and fires ``on_onset`` on the first frame scoring at/above ``vad_threshold``,
-    so the user can interrupt mid-reply. Returns when ``stop`` is set (SPEAKING
-    ended on its own) so the thread is never left running.
+
+def _coerce_wakeword_frame(frame: bytes) -> bytes:
+    """Pad or trim a frame so openWakeWord receives its exact required geometry."""
+    if len(frame) == WAKEWORD_FRAME_BYTES:
+        return frame
+    if len(frame) > WAKEWORD_FRAME_BYTES:
+        return frame[:WAKEWORD_FRAME_BYTES]
+    return frame + b"\x00" * (WAKEWORD_FRAME_BYTES - len(frame))
+
+
+def build_wake_phrase_barge_in_watcher(
+    source: FrameSource,
+    *,
+    listener: WakeWordListener,
+    source_sample_rate: int = WAKEWORD_SAMPLE_RATE,
+    reset_source: Callable[[], None] | None = None,
+) -> BargeInWatcher:
+    """Build the pure barge-in watcher: shared mic frames -> wake phrase.
+
+    The source and listener are injected so the barge-in decision remains
+    unit-testable. The live path wires a persistent sounddevice mic plus the
+    openWakeWord detector on top of this seam.
     """
-    from jarvis.audio import make_sounddevice_source
-    from jarvis.config import get_settings
-    from jarvis.vad import FRAME_SAMPLES, SAMPLE_RATE, OnsetDetector, build_default_detector
-
-    settings = get_settings()
 
     def watch(on_onset: Callable[[], None], stop: threading.Event) -> None:
-        source = make_sounddevice_source(
-            SAMPLE_RATE, block_frames=FRAME_SAMPLES, device=settings.input_device
-        )
-        onset = OnsetDetector(detect=build_default_detector(), threshold=settings.vad_threshold)
+        if reset_source is not None:
+            reset_source()
+        reset = getattr(listener.detect, "reset", None)
+        if callable(reset):
+            reset()
         while not stop.is_set():
-            if onset.feed(source()):
+            try:
+                raw_frame = source()
+            except Exception:
+                logger.exception("barge-in wake watch read_error=1 during SPEAKING")
+                raise
+            frame = raw_frame
+            if source_sample_rate != WAKEWORD_SAMPLE_RATE:
+                frame = resample_mono_pcm16(
+                    raw_frame,
+                    input_rate=source_sample_rate,
+                    output_rate=WAKEWORD_SAMPLE_RATE,
+                )
+            frame = _coerce_wakeword_frame(frame)
+            score = listener.score(frame)
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "barge-in wake watch rms=%.4f score=%.3f read_error=0 "
+                    "raw_bytes=%d frame_bytes=%d",
+                    _pcm16_rms(frame),
+                    score,
+                    len(raw_frame),
+                    len(frame),
+                )
+            if score >= listener.threshold:
+                logger.info("barge-in wake phrase detected during SPEAKING score=%.3f", score)
                 on_onset()
                 return
 
     return watch
+
+
+def build_default_barge_in_watcher(
+    source: FrameSource | None = None,
+    *,
+    source_sample_rate: int | None = None,
+    reset_source: Callable[[], None] | None = None,
+) -> BargeInWatcher:  # pragma: no cover - real mic + openWakeWord
+    """Wire the live barge-in watcher: hot mic -> openWakeWord wake phrase."""
+    from jarvis.audio import make_sounddevice_source
+    from jarvis.config import get_settings
+    from jarvis.wakeword import FRAME_SAMPLES, SAMPLE_RATE, build_default_detector
+
+    settings = get_settings()
+    sample_rate = settings.sample_rate if source_sample_rate is None else source_sample_rate
+    if source is None:
+        block_frames = max(1, round(sample_rate * FRAME_SAMPLES / SAMPLE_RATE))
+        source = make_sounddevice_source(
+            sample_rate,
+            block_frames=block_frames,
+            device=settings.input_device,
+        )
+    listener = WakeWordListener(
+        detect=build_default_detector(),
+        threshold=settings.wake_threshold,
+    )
+    return build_wake_phrase_barge_in_watcher(
+        source,
+        listener=listener,
+        source_sample_rate=sample_rate,
+        reset_source=reset_source,
+    )

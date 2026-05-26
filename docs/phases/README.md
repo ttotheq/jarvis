@@ -13,8 +13,9 @@ opinion.
 2. **Write the failing test(s) first** (TDD) — listed in each phase's
    "Test plan".
 3. Implement until the test passes and the goal's target metric is met.
-4. Update the phase doc's **Status** and **Outcomes**, the `CHANGELOG.md`, and
-   any ADR/`.env.example` in the same PR.
+4. Update the phase doc's **Status** and **Outcomes**, every repo status surface
+   that mentions the phase (`README.md`, this overview, architecture notes when
+   they changed), the `CHANGELOG.md`, and any ADR/`.env.example` in the same PR.
 5. Merge only on green CI.
 
 ## Status legend
@@ -60,10 +61,10 @@ as the unit of tracking.
 | G3.3 | Permission gating | 100% of destructive tool calls trigger spoken confirmation before running | `tests/test_permission_gate.py` |
 | G3.4 | Coverage | ≥ 85% | CI |
 
-### Phase 4 — Daemon polish · _Not started_
+### Phase 4 — Daemon polish · _In progress (G4.0 done)_
 | ID | Metric | Target | Verification |
 |----|--------|--------|--------------|
-| G4.0 | Pre-Phase 4: wake-phrase-gated barge-in (carryover) | Only "hey jarvis" interrupts; ambient/other-voice/self does not; no CoreAudio `-50` during SPEAKING | `tests/test_barge_in.py` + live, recorded |
+| G4.0 | Pre-Phase 4: wake-phrase-gated barge-in (carryover) | Only "hey jarvis" interrupts; ambient/other-voice/self does not; no CoreAudio `-50` during SPEAKING | `tests/test_barge_in.py` + live shared-stream probe |
 | G4.1 | Service lifecycle | launchd service installs, auto-starts, survives logout/login; clean uninstall | manual + `tests/test_service_unit.py` |
 | G4.2 | Cold start | Boot → ready-for-wake-word ≤ 10 s | `scripts/bench_latency.py` |
 | G4.3 | Stability soak | 1-hour idle: 0 crashes, memory growth ≤ 50 MB | soak run, recorded |

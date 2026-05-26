@@ -1,10 +1,11 @@
 # Phase 3 — Jarvis feel
 
-- **Status:** Complete — G3.1 (barge-in), G3.2 (persona), G3.3 (permission gating)
+- **Status:** Done — G3.1 (barge-in), G3.2 (persona), G3.3 (permission gating)
   done; coverage 99% (G3.4). Live end-to-end demo recorded 2026-05-25
   (`phase-3-demo.md`): the spoken gate and in-character replies were demonstrated
   audibly; the demo also found and fixed a real PreToolUse blocking bug (see G3.3
-  Outcomes) and confirmed a live barge-in limitation (no AEC; deferred).
+  Outcomes) and confirmed a live barge-in limitation. That carryover landed in
+  G4.0 on 2026-05-26.
 - **Milestone:** Phase 3
 - **Objective:** Turn a working voice loop into something that feels like Jarvis:
   you can interrupt him, he's concise and in-character, and he asks before doing
@@ -65,8 +66,9 @@ injected so the contract is unit-tested without a mic or a live `claude`
 - **`jarvis.vad.OnsetDetector`** is the rising-edge counterpart to the G2.2
   `Endpointer`: it reuses the same injected Silero `Detector` seam but fires on the
   *first* frame at/above `vad_threshold` (and latches, so one utterance = one
-  onset). The live watcher (`loop.build_default_barge_in_watcher`) reads 512-sample
-  frames off the hot mic and is wired into `jarvis run`.
+  onset). This is the original G3.1 raw-speech primitive; G4.0 later replaced the
+  **live** watcher path with wake-phrase gating on a shared persistent mic while
+  leaving `OnsetDetector` intact as a pure seam.
 - **A cancel `threading.Event`** set by the onset watcher. On onset the watcher
   marks cancel, then aborts the in-flight clip; the consumer stops, the producer
   breaks its token loop and **closes the generator** — in `Brain.stream` that
@@ -80,13 +82,11 @@ The latency is read off an injected clock (onset → playback-halted), proven
 the other three write-first tests. Coverage floor raised to **85%** (G3.4); the
 suite sits at **99%** with `jarvis.loop` and `jarvis.vad` at 100%.
 
-**Known limitation (out of scope for G3.1):** the mic is hot while Kokoro plays,
-so Jarvis can in principle hear *himself* and self-trigger barge-in. There is no
-acoustic echo cancellation yet; onset reuses `vad_threshold` (0.5). On real
-hardware the practical mitigations are a higher onset threshold, output ducking,
-or AEC — to be evaluated when the live loop is exercised end-to-end. The unit
-budget (onset → `stop()`) is pure compute and trivially within 300 ms; the live
-floor is one Silero frame (~32 ms) plus `sd.stop()`, measured manually.
+**Historical limitation at Phase 3 close:** the mic was hot while Kokoro played,
+so Jarvis could hear *himself* and self-trigger barge-in. G4.0 resolved the live
+path by replacing raw-speech onset with wake-phrase gating and by sharing one
+persistent mic between capture and `SPEAKING`; the Phase 3 write-up remains as
+the pre-fix record.
 
 ### G3.2 — Voice persona (spoken conciseness, no code aloud) · _Done_
 

@@ -20,7 +20,8 @@ import threading
 from collections.abc import Callable, Iterator
 
 from jarvis.audio import Clip
-from jarvis.loop import State, VoiceLoop
+from jarvis.loop import State, VoiceLoop, build_wake_phrase_barge_in_watcher
+from jarvis.wakeword import FRAME_BYTES, WakeWordListener
 
 
 class StoppableSpeaker:
@@ -76,6 +77,22 @@ class FakeBargeInWatcher:
         self.returned.set()
 
 
+class ScriptedFrameSource:
+    """Yields a fixed set of frames, optionally stopping once they are exhausted."""
+
+    def __init__(self, frames: list[bytes], *, stop: threading.Event | None = None) -> None:
+        self._frames = list(frames)
+        self._stop = stop
+        self.reads = 0
+
+    def __call__(self) -> bytes:
+        self.reads += 1
+        frame = self._frames.pop(0)
+        if not self._frames and self._stop is not None:
+            self._stop.set()
+        return frame
+
+
 def _clip() -> Clip:
     return Clip(samples=b"\x00\x00", sample_rate=16_000)
 
@@ -109,6 +126,40 @@ def test_barge_in_cancels_playback() -> None:
     assert turn.barged_in is True
     # Barge-in returns to LISTENING (the user is now talking), not IDLE.
     assert states == [State.LISTENING, State.THINKING, State.SPEAKING, State.LISTENING]
+
+
+def test_barge_in_watcher_fires_on_wake_phrase() -> None:
+    """During SPEAKING only the wake phrase score crossing should trigger onset."""
+    source = ScriptedFrameSource([b"\x01\x00" * ((FRAME_BYTES * 3) // 2)] * 4)
+    scores = iter([0.08, 0.34, 0.91, 0.97])
+    listener = WakeWordListener(detect=lambda _frame: next(scores), threshold=0.9)
+    watcher = build_wake_phrase_barge_in_watcher(
+        source,
+        listener=listener,
+        source_sample_rate=48_000,
+    )
+
+    fired: list[str] = []
+    watcher(lambda: fired.append("wake"), threading.Event())
+
+    assert fired == ["wake"]
+    assert source.reads == 3  # stops immediately on the first wake-phrase crossing
+
+
+def test_barge_in_watcher_ignores_non_wake_speech() -> None:
+    """Speech-like audio that never scores as "hey jarvis" must not interrupt."""
+    stop = threading.Event()
+    source = ScriptedFrameSource([b"\x03\x00" * (FRAME_BYTES // 2)] * 3, stop=stop)
+    scores = iter([0.19, 0.47, 0.73])
+    listener = WakeWordListener(detect=lambda _frame: next(scores), threshold=0.9)
+    watcher = build_wake_phrase_barge_in_watcher(source, listener=listener)
+
+    fired: list[str] = []
+    watcher(lambda: fired.append("wake"), stop)
+
+    assert fired == []
+    assert source.reads == 3
+    assert stop.is_set() is True
 
 
 def test_barge_in_cancels_in_flight_brain() -> None:
