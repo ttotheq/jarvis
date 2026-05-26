@@ -115,10 +115,12 @@ capture and for the watcher). The barge-in *logic* is correct and unit-proven
 
 1. **Shipped fix:** PreToolUse denial via exit-2/stderr, not stdout JSON (verified
    against `claude` 2.1.150). Covered in `tests/test_permission_gate.py`.
-2. **Deferred (beyond Phase 3):** live barge-in needs **output ducking or AEC**, and
-   the input watcher should not open a second device stream concurrent with Kokoro
-   output (resolve the `-50`: share one stream, match sample rates, or duck/pause
-   capture during playback). Headphones would side-step the echo for a clean demo.
+2. **Deferred → tracked as pre-Phase 4 action G4.0** (`phase-4-daemon.md`): rather
+   than ducking/AEC to make any-speech barge-in robust, the trigger moves to
+   **wake-phrase gating** (only "hey jarvis" interrupts; reuses `jarvis.wakeword`),
+   which rejects ambient/other-voice/self speech by construction. The `-50`
+   concurrent-stream fix is a prerequisite (share one stream / match sample rates) so
+   the mic feeds the wake-word detector valid frames during playback.
 3. **Registering the gate for the real loop:** add to the `settings.json` the brain's
    `claude` reads (Bash matcher → `… python -m jarvis.permissions`); see the Phase 3
    doc Outcomes for the snippet.

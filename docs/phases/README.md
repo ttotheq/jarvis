@@ -43,7 +43,7 @@ as the unit of tracking.
 | G1.4 | Session continuity | Turn 3 correctly references turn 1 via `--resume` | `tests/test_brain_session.py` |
 | G1.5 | Coverage | ≥ 80% | CI |
 
-### Phase 2 — Wake word + streaming · _In progress_
+### Phase 2 — Wake word + streaming · _Done_
 | ID | Metric | Target | Verification |
 |----|--------|--------|--------------|
 | G2.1 | Wake-word detection | True-accept ≥ 95% / 20 utterances; false-accept ≤ 1 per 30 min ambient | `tests/test_wakeword.py` on audio fixtures + soak |
@@ -52,7 +52,7 @@ as the unit of tracking.
 | G2.4 | Streaming overlap | First sentence spoken before full Claude response completes | `tests/test_loop_streaming.py` |
 | G2.5 | Coverage | ≥ 80% | CI |
 
-### Phase 3 — Jarvis feel · _In progress_
+### Phase 3 — Jarvis feel · _Done_
 | ID | Metric | Target | Verification |
 |----|--------|--------|--------------|
 | G3.1 | Barge-in latency | Playback stops ≤ 300 ms after user speech onset; in-flight task cancelled | `tests/test_barge_in.py` |
@@ -63,6 +63,7 @@ as the unit of tracking.
 ### Phase 4 — Daemon polish · _Not started_
 | ID | Metric | Target | Verification |
 |----|--------|--------|--------------|
+| G4.0 | Pre-Phase 4: wake-phrase-gated barge-in (carryover) | Only "hey jarvis" interrupts; ambient/other-voice/self does not; no CoreAudio `-50` during SPEAKING | `tests/test_barge_in.py` + live, recorded |
 | G4.1 | Service lifecycle | launchd service installs, auto-starts, survives logout/login; clean uninstall | manual + `tests/test_service_unit.py` |
 | G4.2 | Cold start | Boot → ready-for-wake-word ≤ 10 s | `scripts/bench_latency.py` |
 | G4.3 | Stability soak | 1-hour idle: 0 crashes, memory growth ≤ 50 MB | soak run, recorded |
