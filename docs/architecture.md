@@ -34,6 +34,13 @@ The orchestrator (`jarvis.loop`) is a small state machine:
 Streaming overlaps `THINKING` and `SPEAKING`: TTS begins on the first complete
 sentence from Claude rather than waiting for the full response.
 
+During `SPEAKING` the mic stays hot. An onset watcher (`jarvis.vad.OnsetDetector`
+on the live frame source) fires on the first speech frame; that aborts playback
+(`Speaker.stop()`), cancels the in-flight `claude` stream (closing the token
+generator terminates the child), and returns to `LISTENING` — barge-in (G3.1),
+bounded at ≤ 300 ms from onset because `stop()` halts the clip rather than waiting
+out the sentence.
+
 ## Module map
 
 These modules are introduced phase-by-phase (see [phases/](phases/)). Conventional
@@ -43,12 +50,12 @@ Commit scopes match these names.
 |--------|----------------|-----------|
 | `jarvis.config` | Twelve-factor settings (present today) | scaffolding |
 | `jarvis.cli` | Command-line surface (present today) | scaffolding |
-| `jarvis.audio` | Mic capture + playback ring buffers (`sounddevice`) | Phase 1 |
+| `jarvis.audio` | Mic capture + playback (`sounddevice`); `Speaker.stop()` aborts a clip mid-playback for barge-in (Phase 3) | Phase 1 |
 | `jarvis.stt` | whisper.cpp transcription | Phase 1 |
 | `jarvis.brain` | `claude -p` subprocess, session resume, speakable-text extraction | Phase 1 |
 | `jarvis.tts` | Kokoro synthesis (British male voice) | Phase 1 |
 | `jarvis.wakeword` | openWakeWord "hey_jarvis" | Phase 2 |
-| `jarvis.vad` | Silero VAD endpointing | Phase 2 |
+| `jarvis.vad` | Silero VAD endpointing (`Endpointer`) + speech-onset for barge-in (`OnsetDetector`) | Phase 2 |
 | `jarvis.persona` | Voice-mode system prompt | Phase 3 |
 | `jarvis.loop` | Turn orchestrator (push-to-talk in P1; state machine + barge-in in 2–3) | Phase 1 |
 

@@ -18,6 +18,7 @@ from jarvis.vad import (
     FRAME_BYTES,
     FRAME_SAMPLES,
     Endpointer,
+    OnsetDetector,
     iter_frames,
 )
 
@@ -109,6 +110,58 @@ def test_reset_clears_state_for_reuse() -> None:
     assert ep.endpoint([SILENT] * 3) == 2
     ep.reset()
     assert ep.endpoint([SILENT] * 3) == 2  # fresh state, fires again
+
+
+# --- speech onset (the barge-in rising edge, G3.1) ------------------------
+
+
+def _onset(scores: list[float]) -> OnsetDetector:
+    """An onset detector whose per-frame probability is read off ``scores``."""
+    it = _scripted(scores)
+    return OnsetDetector(detect=lambda _frame: next(it), threshold=0.5)
+
+
+def test_onset_fires_on_first_speech_frame() -> None:
+    """Silence then speech: the onset fires on the first frame at/above threshold."""
+    det = _onset([0.1, 0.2, 0.9, 0.1])
+    fires = [det.feed(SILENT) for _ in range(4)]
+    assert fires == [False, False, True, False]
+
+
+def test_onset_never_fires_on_pure_silence() -> None:
+    det = _onset([0.0, 0.1, 0.2, 0.3])
+    assert all(det.feed(SILENT) is False for _ in range(4))
+
+
+def test_onset_latches_so_continuous_speech_fires_once() -> None:
+    """A run of speech frames yields one onset, not one per voiced frame."""
+    det = _onset([0.9, 0.9, 0.9, 0.9])
+    fires = [det.feed(SILENT) for _ in range(4)]
+    assert fires == [True, False, False, False]
+
+
+def test_onset_threshold_is_inclusive() -> None:
+    """A probability exactly at the threshold counts as speech and fires."""
+    det = OnsetDetector(detect=lambda _f: 0.5, threshold=0.5)
+    assert det.feed(SILENT) is True
+
+
+def test_onset_returns_firing_index() -> None:
+    det = _onset([0.1, 0.1, 0.9])
+    assert det.onset([SILENT] * 3) == 2
+
+
+def test_onset_returns_none_when_no_speech() -> None:
+    det = _onset([0.1, 0.2, 0.3])
+    assert det.onset([SILENT] * 3) is None
+
+
+def test_onset_reset_clears_the_latch() -> None:
+    scores = _scripted([0.9, 0.1, 0.9])
+    det = OnsetDetector(detect=lambda _f: next(scores), threshold=0.5)
+    assert det.onset([SILENT]) == 0
+    det.reset()
+    assert det.onset([SILENT] * 2) == 1  # fresh latch, fires again
 
 
 # --- frame geometry (mirrors jarvis.wakeword) -----------------------------

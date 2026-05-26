@@ -108,6 +108,52 @@ class Endpointer:
         self._fired = False
 
 
+@dataclass
+class OnsetDetector:
+    """Fires speech-onset on the first frame scoring ``>= threshold`` (G3.1).
+
+    The rising-edge counterpart to :class:`Endpointer`: where the endpointer waits
+    for *trailing silence* to close a turn, the onset detector watches for the
+    *start* of speech while Jarvis is SPEAKING, so the user can barge in. It shares
+    the same injected :data:`Detector` seam (so it is tested with a fake scorer)
+    and latches after firing, so one continuous utterance yields a single onset,
+    not one per voiced frame.
+    """
+
+    detect: Detector
+    threshold: float
+
+    _fired: bool = field(default=False, init=False, repr=False)
+
+    def feed(self, frame: bytes) -> bool:
+        """Process one frame; return True only on the frame that fires the onset.
+
+        Returns True exactly once (the rising edge of "speech has started") and
+        False on every frame before and after, so an onset is reported once.
+        """
+        if self._fired:
+            return False
+        if self.detect(frame) >= self.threshold:  # speech (threshold inclusive)
+            self._fired = True
+            return True
+        return False
+
+    def onset(self, frames: Iterable[bytes]) -> int | None:
+        """Consume frames until onset fires; return the firing frame index.
+
+        Returns the 0-based index of the first speech frame, or None if ``frames``
+        is exhausted first. Short-circuits, so a live mic stream is fine.
+        """
+        for i, frame in enumerate(frames):
+            if self.feed(frame):
+                return i
+        return None
+
+    def reset(self) -> None:
+        """Clear the latch (use between independent SPEAKING turns)."""
+        self._fired = False
+
+
 class SileroDetector:  # pragma: no cover - requires the silero-vad model + torch
     """Score frame speech probability with Silero VAD's bundled pretrained model."""
 

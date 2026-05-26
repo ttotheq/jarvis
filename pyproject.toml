@@ -70,7 +70,7 @@ module = ["sounddevice", "numpy", "kokoro", "openwakeword", "openwakeword.*", "s
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "-ra -q --cov=jarvis --cov-report=term-missing --cov-fail-under=80"
+addopts = "-ra -q --cov=jarvis --cov-report=term-missing --cov-fail-under=85"
 testpaths = ["tests"]
 # "scripts" is on the path so the throwaway Phase 0 bench (scripts/bench_brain.py)
 # can be imported and unit-tested without packaging it.

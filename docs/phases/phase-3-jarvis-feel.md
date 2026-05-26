@@ -1,6 +1,6 @@
 # Phase 3 — Jarvis feel
 
-- **Status:** Not started
+- **Status:** In progress — G3.1 (barge-in) done; G3.2/G3.3 remain
 - **Milestone:** Phase 3
 - **Objective:** Turn a working voice loop into something that feels like Jarvis:
   you can interrupt him, he's concise and in-character, and he asks before doing
@@ -48,4 +48,38 @@ in-character replies + a spoken confirmation; docs + CHANGELOG updated.
 
 ## Outcomes
 
-_To be filled in as the phase completes._
+### G3.1 — Barge-in (cancellable SPEAKING) · _Done_
+
+The `SPEAKING` state is now cancellable. Three concurrent edges cooperate, all
+injected so the contract is unit-tested without a mic or a live `claude`
+(`tests/test_barge_in.py`, `tests/test_vad.py`):
+
+- **`Speaker` grows `stop()`** (real impl: `sd.stop()`), so the consumer can abort
+  a clip *mid-utterance* instead of waiting out the sentence. This is the seam
+  that makes the 300 ms budget reachable — barge-in latency is bounded by `stop()`,
+  not by how long the current sentence happens to be.
+- **`jarvis.vad.OnsetDetector`** is the rising-edge counterpart to the G2.2
+  `Endpointer`: it reuses the same injected Silero `Detector` seam but fires on the
+  *first* frame at/above `vad_threshold` (and latches, so one utterance = one
+  onset). The live watcher (`loop.build_default_barge_in_watcher`) reads 512-sample
+  frames off the hot mic and is wired into `jarvis run`.
+- **A cancel `threading.Event`** set by the onset watcher. On onset the watcher
+  marks cancel, then aborts the in-flight clip; the consumer stops, the producer
+  breaks its token loop and **closes the generator** — in `Brain.stream` that
+  `GeneratorExit` terminates the `claude` child, so no further sentences are
+  spoken. The machine then transitions to `LISTENING` (the user is talking), not
+  `IDLE`.
+
+The latency is read off an injected clock (onset → playback-halted), proven
+≤ 300 ms in `test_barge_in_latency_within_budget`; the cancellation contract
+(no later sentence spoken, stream torn down, returns to LISTENING) is proven in
+the other three write-first tests. Coverage floor raised to **85%** (G3.4); the
+suite sits at **99%** with `jarvis.loop` and `jarvis.vad` at 100%.
+
+**Known limitation (out of scope for G3.1):** the mic is hot while Kokoro plays,
+so Jarvis can in principle hear *himself* and self-trigger barge-in. There is no
+acoustic echo cancellation yet; onset reuses `vad_threshold` (0.5). On real
+hardware the practical mitigations are a higher onset threshold, output ducking,
+or AEC — to be evaluated when the live loop is exercised end-to-end. The unit
+budget (onset → `stop()`) is pure compute and trivially within 300 ms; the live
+floor is one Silero frame (~32 ms) plus `sd.stop()`, measured manually.
