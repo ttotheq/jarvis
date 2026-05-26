@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from jarvis.config import PermissionMode, Settings, get_settings
+from jarvis.config import PermissionMode, RunMode, Settings, get_settings
 
 
 def test_defaults_are_sane() -> None:
@@ -15,6 +15,26 @@ def test_defaults_are_sane() -> None:
     assert settings.stt_model == "large-v3-turbo"
     assert settings.tts_voice == "bm_george"
     assert settings.permission_mode is PermissionMode.accept_edits
+
+
+def test_run_mode_defaults_to_wake_word() -> None:
+    """The always-on wake-word runtime is the product default."""
+    settings = Settings()
+    assert settings.run_mode is RunMode.wake_word
+    assert settings.listen_max_seconds > 0
+
+
+def test_run_mode_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JARVIS_RUN_MODE", "push_to_talk")
+    monkeypatch.setenv("JARVIS_LISTEN_MAX_SECONDS", "12.5")
+    settings = Settings()
+    assert settings.run_mode is RunMode.push_to_talk
+    assert settings.listen_max_seconds == 12.5
+
+
+def test_listen_max_seconds_must_be_positive() -> None:
+    with pytest.raises(ValidationError):
+        Settings(listen_max_seconds=0)
 
 
 def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:

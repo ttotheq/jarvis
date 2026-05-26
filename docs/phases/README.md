@@ -61,7 +61,7 @@ as the unit of tracking.
 | G3.3 | Permission gating | 100% of destructive tool calls trigger spoken confirmation before running | `tests/test_permission_gate.py` |
 | G3.4 | Coverage | ≥ 85% | CI |
 
-### Phase 4 — Daemon polish · _In progress (G4.0, G4.1 done)_
+### Phase 4 — Daemon polish · _In progress (G4.0, G4.1, always-on runtime done)_
 | ID | Metric | Target | Verification |
 |----|--------|--------|--------------|
 | G4.0 | Pre-Phase 4: wake-phrase-gated barge-in (carryover) | Only "hey jarvis" interrupts; ambient/other-voice/self does not; no CoreAudio `-50` during SPEAKING | `tests/test_barge_in.py` + live shared-stream probe |

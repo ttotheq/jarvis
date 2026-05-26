@@ -1,11 +1,11 @@
 # Phase 4 — Daemon polish
 
-- **Status:** In progress — the **pre-Phase 4 carryover (G4.0)** and **G4.1
-  (service lifecycle)** are now done: wake-phrase-gated barge-in + the
-  audio-stream fix (`phase-3-demo.md`) landed on 2026-05-26, and the macOS
-  launchd LaunchAgent (`jarvis service install | uninstall | status`, ADR-0006)
-  landed the same day. The remaining daemon/release goals (G4.2–G4.5) are still
-  ahead.
+- **Status:** In progress — **G4.0** (wake-phrase barge-in), **G4.1** (launchd
+  service lifecycle, ADR-0006), and the **always-on wake-word runtime** (the
+  entry point the service runs) are done as of 2026-05-26. `jarvis run` now
+  defaults to a headless wake-word cascade. The remaining daemon/release goals
+  (G4.2 cold start, G4.3 soak, G4.4 config-driven, G4.5 release) are still ahead;
+  G4.2/G4.3 now have the always-on loop they need to measure against.
 - **Milestone:** Phase 4
 - **Objective:** Make Jarvis a dependable always-on background service and cut
   the first release.
@@ -202,3 +202,49 @@ exposes `jarvis service install | uninstall | status`.
   performed autonomously. The mechanism is in place and proven loaded with
   `RunAtLoad: true`; confirm survival by `jarvis service install`, log out and
   back in, then `jarvis service status` (expect `loaded`).
+
+### Always-on wake-word runtime · _Done 2026-05-26_
+
+The entry point the launchd service runs. Previously `jarvis run` was the
+Enter-gated developer harness and exited under launchd for lack of a TTY (the
+G4.1 known gap). `jarvis run` now defaults to a **headless wake-word cascade**:
+it parks at `IDLE` until "hey jarvis", endpoints the utterance with Silero VAD,
+streams Claude's reply through TTS, and returns to `IDLE` — no keyboard, so it
+self-sustains under the service. This unblocks **G4.2** (cold start) and **G4.3**
+(soak), which need a loop that stays up.
+
+- **Two pure primitives in `jarvis.loop`** (injected, fully unit-tested without a
+  mic or native models): `wait_for_wake_phrase` (the IDLE gate — resamples and
+  coerces mic frames to openWakeWord's 80 ms geometry, blocks until the score
+  crosses `wake_threshold`, reusing the G4.0 frame path via a shared
+  `_to_wakeword_frame` helper) and `capture_until_endpoint` (the LISTENING
+  capture — accumulates the `Clip` at the capture rate while re-chunking a 16 kHz
+  copy into Silero's exact 512-sample frames, **carrying the remainder across mic
+  reads** since the 1280-sample mic block is not a multiple of the 512-sample VAD
+  frame, and stopping on the VAD endpoint or a `listen_max_seconds` safety cap).
+- **`VoiceLoop` gained one additive seam** `wait_for_wake`: when set, a turn opens
+  `IDLE → LISTENING` (matching the architecture state machine); when `None`, the
+  developer-harness behaviour is byte-for-byte unchanged (same optional-seam
+  pattern as `watch_barge_in`). `_think_and_speak`, brain, TTS, and barge-in are
+  untouched.
+- **Config-driven:** new `JARVIS_RUN_MODE` (`wake_word` default | `push_to_talk` |
+  `timed`) and `JARVIS_LISTEN_MAX_SECONDS`. The persistent shared mic feeds the
+  IDLE wake-wait, the LISTENING capture, and the SPEAKING barge-in watcher alike.
+
+**Verification:**
+
+- Write-first tests landed in `tests/test_always_on.py` (wake gate fires/ignores,
+  the cross-read VAD re-chunk carry — 5 frames vs the 4 a naive split would drop,
+  the duration cap, resampling, and reset-between-turns) and `tests/test_loop.py`
+  (the `IDLE → LISTENING` contract with the seam, and back-compat without it),
+  plus `run_mode` parsing in `tests/test_config.py`. Full suite **235 passed, 97%
+  coverage**; `jarvis.loop` at 95% (only the native builders + pre-existing
+  barge-in live branches excluded).
+- **Live mic check is deferred:** speaking "hey jarvis" → wake → VAD endpoint →
+  reply → return to IDLE needs the mic + `--extra voice` stack and is the manual
+  step (it will also become the basis for the G4.2/G4.3 measurements). The native
+  `build_wait_for_wake` / `build_vad_record_turn` shims carry `# pragma: no cover`.
+
+**Deferred to a focused follow-up:** status chimes (ready/listening/thinking) — a
+Phase 4 in-scope item — ride cleanly on the new `on_state` `IDLE`/`LISTENING`
+transitions and are kept out of this change to keep it tight.

@@ -8,6 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `jarvis run` now defaults to the always-on **wake_word** mode (was Enter-gated
+  push-to-talk). Push-to-talk and timed turns remain available via
+  `JARVIS_RUN_MODE`. `JARVIS_PTT_SECONDS` no longer implicitly selects timed mode
+  — set `JARVIS_RUN_MODE=timed` explicitly (it then sizes the per-turn window).
+
 - Documentation/status alignment after Phase 3: the repo-level docs now reflect
   that **Phase 3 is done**, **G4.0 is done**, Phase 4 is now in progress, the
   default `jarvis run` path is still the development push-to-talk / timed-turn
@@ -51,6 +56,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 4 always-on runtime: `jarvis run` now defaults to a **wake-word** mode that
+  makes the cascade self-sustaining and headless — it parks at `IDLE` until
+  "hey jarvis", endpoints the utterance with Silero VAD, replies, and returns to
+  `IDLE`, with no keyboard, so it runs unattended under the G4.1 launchd service.
+  Two new pure, injected primitives in `jarvis.loop` carry it:
+  `wait_for_wake_phrase` (the IDLE gate — resamples/coerces mic frames to
+  openWakeWord geometry and blocks until the score crosses `wake_threshold`) and
+  `capture_until_endpoint` (the LISTENING capture — accumulates the `Clip` while
+  re-chunking a 16 kHz copy into Silero's exact 512-sample frames, carrying any
+  remainder across mic reads, and stops on the VAD endpoint or a `listen_max_seconds`
+  safety cap). `VoiceLoop` gains an optional `wait_for_wake` seam: when set, a turn
+  opens at `IDLE`→`LISTENING` (matching the architecture state machine); when `None`,
+  behaviour is unchanged (the developer harness). Mode is config-driven via the new
+  `JARVIS_RUN_MODE` (`wake_word` | `push_to_talk` | `timed`) and `JARVIS_LISTEN_MAX_SECONDS`;
+  the persistent shared mic feeds IDLE wake-wait, LISTENING capture, and SPEAKING
+  barge-in alike. Write-first tests in `tests/test_always_on.py` (wake gate, VAD
+  re-chunking incl. the cross-read carry, max-duration cap, resampling, reset-between-turns)
+  plus the IDLE→LISTENING contract in `tests/test_loop.py`; brain/TTS/barge-in
+  unchanged. The native sounddevice/openWakeWord/Silero builders
+  (`build_wait_for_wake`, `build_vad_record_turn`) are coverage-excluded shims for the
+  manual live check. This is the always-on entry point the launchd service plugs into;
+  it unblocks G4.2 (cold start) and G4.3 (soak).
 - Phase 4 service lifecycle (G4.1): new `jarvis.service` module + `jarvis service
   install | uninstall | status` commands run Jarvis as a macOS **launchd
   LaunchAgent** (ADR-0006). `install` generates `~/Library/LaunchAgents/<label>.plist`
