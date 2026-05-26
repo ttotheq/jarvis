@@ -12,7 +12,7 @@ from collections.abc import Callable
 
 import typer
 
-from jarvis import __version__
+from jarvis import __version__, service
 from jarvis.audio import Clip
 from jarvis.config import get_settings
 from jarvis.doctor import run_doctor
@@ -23,6 +23,13 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+service_app = typer.Typer(
+    name="service",
+    help="Manage the Jarvis always-on background service (macOS launchd).",
+    no_args_is_help=True,
+)
+app.add_typer(service_app)
 
 
 @app.command()
@@ -46,6 +53,35 @@ def doctor() -> None:
     Exits non-zero and names any missing dependency; exits 0 when all present.
     """
     raise typer.Exit(code=run_doctor(write=typer.echo))
+
+
+@service_app.command("install")
+def service_install() -> None:
+    """Install and load the launchd LaunchAgent (auto-starts at login)."""
+    settings = get_settings()
+    path = service.install(settings, runner=service.default_runner)
+    typer.echo(f"Installed {settings.service_label} -> {path}")
+    typer.echo("Auto-starts at login and restarts on crash. `jarvis service status` to check.")
+
+
+@service_app.command("uninstall")
+def service_uninstall() -> None:
+    """Unload the LaunchAgent and remove its plist."""
+    settings = get_settings()
+    removed = service.uninstall(settings, runner=service.default_runner)
+    if removed:
+        typer.echo(f"Uninstalled {settings.service_label}.")
+    else:
+        typer.echo(f"{settings.service_label} was not installed; nothing to remove.")
+
+
+@service_app.command("status")
+def service_status() -> None:
+    """Report whether the service is installed and loaded (exit 0 if loaded)."""
+    settings = get_settings()
+    st = service.status(settings, runner=service.default_runner)
+    typer.echo(service.format_status(st))
+    raise typer.Exit(code=0 if st.loaded else 1)
 
 
 def _continue_for(max_turns: int | None) -> Callable[[int], bool]:

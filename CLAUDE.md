@@ -31,6 +31,10 @@ uv run pytest -k "barge_in"                       # by keyword
 uv run jarvis doctor     # verify the native stack is installed (exit 0 when ready)
 uv run jarvis config     # print resolved settings (defaults + env + .env)
 uv run jarvis run        # the dev harness voice loop (needs --extra voice + a mic)
+
+uv run jarvis service install     # register the launchd LaunchAgent (auto-start at login)
+uv run jarvis service status      # installed/loaded? (exit 0 when loaded)
+uv run jarvis service uninstall   # unload + remove the plist
 ```
 
 Never push without a green `make check`. CI (`.github/workflows/ci.yml`) runs on **macos-latest** and does **not** install the `voice` extra.
@@ -46,7 +50,7 @@ Module map — **Conventional Commit scopes match these module names** (`feat(st
 | Module | Responsibility |
 |--------|----------------|
 | `jarvis.config` | Twelve-factor `Settings` (pydantic-settings); the single home for every tunable |
-| `jarvis.cli` | Typer CLI (`version`, `config`, `doctor`, `run`) |
+| `jarvis.cli` | Typer CLI (`version`, `config`, `doctor`, `run`, `service`) |
 | `jarvis.audio` | Mic capture + playback; persistent shared mic + PCM16 resampling for live barge-in |
 | `jarvis.stt` | whisper.cpp transcription |
 | `jarvis.brain` | `claude -p` subprocess, session resume, speakable-text extraction |
@@ -56,6 +60,7 @@ Module map — **Conventional Commit scopes match these module names** (`feat(st
 | `jarvis.persona` | Voice-mode system prompt + the pure conciseness/no-code metric |
 | `jarvis.permissions` | `PreToolUse` hook that verbally gates destructive Bash calls |
 | `jarvis.loop` | Turn orchestrator + barge-in watcher wiring |
+| `jarvis.service` | macOS launchd LaunchAgent lifecycle (config-driven plist + `install`/`uninstall`/`status`) |
 
 ### The brain (`jarvis.brain`)
 

@@ -51,6 +51,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 4 service lifecycle (G4.1): new `jarvis.service` module + `jarvis service
+  install | uninstall | status` commands run Jarvis as a macOS **launchd
+  LaunchAgent** (ADR-0006). `install` generates `~/Library/LaunchAgents/<label>.plist`
+  and bootstraps it into the `gui/<uid>` domain; the plist sets `RunAtLoad` (start
+  at login) and `KeepAlive {Crashed: true}` (restart on crash, not on clean exit).
+  No user paths are baked into source: the entry point resolves **at install time**
+  to `[sys.executable, "-m", "jarvis", "run"]`, the working directory to the resolved
+  project root, and `EnvironmentVariables.PATH` to the install-time `PATH` so launchd's
+  minimal environment still finds `claude` and the native binaries. `uninstall` boots
+  the service out and removes the plist (idempotent); `status` reports installed/loaded
+  state and exits non-zero when not loaded. Two config keys drive it: `JARVIS_SERVICE_LABEL`
+  and `JARVIS_SERVICE_LOG_DIR`. Plist generation and lifecycle orchestration are pure and
+  unit-tested via an injected `Runner` seam (`tests/test_service_unit.py`, including
+  `test_service_plist_is_valid`); only the `launchctl`-spawning `default_runner` is a
+  coverage-excluded shim. **Verified live (macOS Tahoe 26.5, 2026-05-26):** the
+  install → status → uninstall round-trip loaded the agent (`launchctl print` showed
+  `state = running`, `runatload`, `program = …/.venv/bin/python3`), `plutil -lint` passed,
+  and uninstall left launchd with no record and no plist — full attribution in the Phase 4
+  doc Outcomes.
 - G4.0 barge-in watcher tests: `test_barge_in_watcher_fires_on_wake_phrase` and
   `test_barge_in_watcher_ignores_non_wake_speech` now pin the new wake-gated
   watcher seam in `tests/test_barge_in.py`, while `tests/test_audio.py` gained
