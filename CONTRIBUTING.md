@@ -11,9 +11,9 @@ Write the failing test first, then the code that makes it pass, then refactor.
 - Every phase doc lists a **Test plan (write first)** — those tests define "done".
 - A change without a test is incomplete. Bug fixes start with a test that
   reproduces the bug.
-- The coverage gate is **80%** (`--cov-fail-under=80` in `pyproject.toml`) and
-  rises in later phases (see `docs/phases/`). Coverage is a floor, not a goal —
-  test behaviour, not lines.
+- The coverage gate is **85%** (`--cov-fail-under=85` in `pyproject.toml`); it
+  started at 80% and rose in Phases 3–4 (see `docs/phases/`). Coverage is a
+  floor, not a goal — test behaviour, not lines.
 
 ```bash
 make test     # pytest with the coverage gate
