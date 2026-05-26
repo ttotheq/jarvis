@@ -173,17 +173,25 @@ def _timed_record_turn(  # pragma: no cover - requires a real microphone
 
 @app.command()
 def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manually
-    """Hold a push-to-talk spoken conversation with Claude Code.
+    """Hold a spoken conversation with Claude Code.
 
-    Push a key, speak, hear the reply; repeat until Ctrl-C. The local voice stack
-    must be installed — run ``jarvis doctor`` first. Set ``JARVIS_PTT_SECONDS`` for
-    a hands-free timed turn (and ``JARVIS_MAX_TURNS`` to stop after N turns) when no
-    interactive keyboard is available. The loop's logic is covered by
-    tests/test_loop.py; this wiring is the manual end-to-end check (G1.1).
+    The default ``wake_word`` run mode is the always-on cascade: it waits for
+    "hey jarvis", endpoints your utterance with VAD, replies, and returns to
+    waiting — no keyboard, so it runs under ``jarvis service``. Set
+    ``JARVIS_RUN_MODE=push_to_talk`` (Enter-gated) or ``timed`` (with
+    ``JARVIS_PTT_SECONDS``) for the developer harness. The local voice stack must
+    be installed — run ``jarvis doctor`` first. The loop's logic is covered by
+    tests/test_loop.py and tests/test_always_on.py; this wiring is manual.
     """
     from jarvis.audio import SoundDeviceMicrophone
     from jarvis.brain import Brain
-    from jarvis.loop import VoiceLoop, build_default_barge_in_watcher
+    from jarvis.config import RunMode
+    from jarvis.loop import (
+        VoiceLoop,
+        build_default_barge_in_watcher,
+        build_vad_record_turn,
+        build_wait_for_wake,
+    )
     from jarvis.stt import WhisperCppTranscriber
     from jarvis.tts import build_default_speaker, build_default_synthesizer
     from jarvis.wakeword import FRAME_SAMPLES, SAMPLE_RATE
@@ -197,7 +205,22 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
         device=settings.input_device,
     )
     try:
-        if settings.ptt_seconds is not None:
+        wait_for_wake: Callable[[], None] | None = None
+        if settings.run_mode is RunMode.wake_word:
+            record_turn = build_vad_record_turn(
+                microphone.read,
+                sample_rate=settings.sample_rate,
+                max_seconds=settings.listen_max_seconds,
+                reset_source=microphone.flush,
+            )
+            wait_for_wake = build_wait_for_wake(
+                microphone.read,
+                source_sample_rate=settings.sample_rate,
+                reset_source=microphone.flush,
+            )
+        elif settings.run_mode is RunMode.timed:
+            if settings.ptt_seconds is None:
+                raise typer.BadParameter("timed run mode requires JARVIS_PTT_SECONDS")
             record_turn = _timed_record_turn(
                 settings.sample_rate,
                 settings.ptt_seconds,
@@ -217,13 +240,17 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
             stream=Brain(settings).stream,
             synthesize=build_default_synthesizer(),
             speaker=build_default_speaker(),
+            wait_for_wake=wait_for_wake,
             watch_barge_in=build_default_barge_in_watcher(
                 microphone.read,
                 source_sample_rate=settings.sample_rate,
                 reset_source=microphone.flush,
             ),
         )
-        typer.echo("Jarvis is listening. Press Ctrl-C to stop.")
+        if settings.run_mode is RunMode.wake_word:
+            typer.echo('Jarvis is ready. Say "hey jarvis" to begin. Press Ctrl-C to stop.')
+        else:
+            typer.echo("Jarvis is listening. Press Ctrl-C to stop.")
         try:
             turns = loop.converse(should_continue=_continue_for(settings.max_turns))
         except KeyboardInterrupt:

@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from jarvis.audio import Clip
-from jarvis.loop import VoiceLoop
+from jarvis.loop import State, VoiceLoop
 
 
 class FakeSpeaker:
@@ -73,3 +73,34 @@ def test_converse_stops_when_predicate_is_false() -> None:
     turns = loop.converse(should_continue=lambda _done: False)
     assert turns == []
     assert speaker.played == []
+
+
+def test_one_turn_waits_for_wake_then_enters_idle_before_listening() -> None:
+    """With a wait_for_wake seam, a turn is gated at IDLE on the wake phrase."""
+    speaker = FakeSpeaker()
+    loop = _loop(["what time is it"], ["Half past three, sir. "], speaker)
+    states: list[State] = []
+    loop.on_state = states.append
+    woke: list[bool] = []
+    loop.wait_for_wake = lambda: woke.append(True)
+
+    loop.one_turn()
+
+    assert woke == [True]  # the wake gate ran exactly once
+    # IDLE precedes LISTENING, matching the architecture state machine.
+    assert states[0] is State.IDLE
+    assert states[1] is State.LISTENING
+    assert states.index(State.IDLE) < states.index(State.LISTENING)
+
+
+def test_one_turn_without_wake_seam_starts_at_listening() -> None:
+    """Back-compat: with no wait_for_wake, the turn opens at LISTENING as before."""
+    speaker = FakeSpeaker()
+    loop = _loop(["hello"], ["Hello, sir. "], speaker)
+    states: list[State] = []
+    loop.on_state = states.append
+
+    loop.one_turn()
+
+    assert states[0] is State.LISTENING
+    assert State.IDLE not in states[:1]

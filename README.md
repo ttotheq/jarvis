@@ -5,22 +5,23 @@ A local-first, voice-controlled interface for [Claude Code](https://claude.com/c
 Jarvis is **not** a reimplementation of Claude Code. It is a thin, local voice cascade that uses the real Claude Code CLI as its brain:
 
 ```
-push-to-talk / timed turn today → mic → STT → claude (headless) → TTS → speakers
-                                                      ↑ barge-in cancels in-flight speech + task
+"hey jarvis" → mic → VAD endpoint → STT → claude (headless) → TTS → speakers
+   wake word                                     ↑ "hey jarvis" barge-in cancels in-flight speech + task
 ```
 
 Everything in the voice path runs on-device (Apple Silicon). The only thing that leaves the machine is the final text prompt to Claude — exactly as Claude Code already works.
 
 ## Status
 
-**Phase 3 shipped; G4.0 and G4.1 are in** — Jarvis streams Claude replies, speaks
-in-character, verbally gates destructive Bash actions before they run, only lets
-`"hey jarvis"` interrupt during `SPEAKING` on the live path, and now installs as a
-macOS launchd background service (`jarvis service install`) that auto-starts at
-login and restarts on crash. The default `jarvis run` command is still a
-development harness (Enter-gated push-to-talk or timed turns in non-interactive
-shells); wiring that harness into an always-on wake-word loop is the remaining
-Phase 4 step.
+**Phase 3 shipped; G4.0/G4.1 and the always-on runtime are in** — Jarvis streams
+Claude replies, speaks in-character, verbally gates destructive Bash actions before
+they run, only lets `"hey jarvis"` interrupt during `SPEAKING`, and installs as a
+macOS launchd background service (`jarvis service install`) that auto-starts at login
+and restarts on crash. `jarvis run` now defaults to an always-on **wake-word**
+cascade: it waits for `"hey jarvis"`, endpoints your speech with VAD, replies, and
+returns to waiting — no keyboard, so it runs headless under the service.
+(Push-to-talk and timed turns remain available via `JARVIS_RUN_MODE`.) Remaining
+Phase 4 work is cold-start/soak measurement and the v1.0.0 release.
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -53,17 +54,16 @@ brew install portaudio whisper-cpp espeak-ng     # system libraries
 uv sync --extra voice                            # Kokoro, sounddevice, openWakeWord, …
 # place a whisper model at ~/.cache/jarvis/whisper/ggml-large-v3-turbo.bin
 uv run jarvis doctor                             # verify the stack (exit 0 when ready)
-uv run jarvis run                                # push-to-talk: Enter to talk, Ctrl-C to quit
+uv run jarvis run                                # always-on: say "hey jarvis", Ctrl-C to quit
 ```
 
-`jarvis run` is still the development harness: it defaults to Enter-gated
-push-to-talk, and in a non-interactive shell you can set `JARVIS_PTT_SECONDS`
-(timed turns) plus `JARVIS_MAX_TURNS` to run hands-free. Its live barge-in path
-now shares one persistent mic between capture and `SPEAKING`, resamples to
-openWakeWord's 16 kHz frame geometry when needed, and only interrupts on
-`"hey jarvis"`. The always-on wake-word daemon is the remaining Phase 4 step.
-Copy `.env.example` to `.env` to override any setting locally; nothing in
-`.env` is committed.
+`jarvis run` defaults to the always-on **wake-word** cascade: say `"hey jarvis"`,
+speak your request, and VAD ends the turn on your trailing silence; it then replies
+and returns to waiting. The mic stays hot during playback so `"hey jarvis"` can barge
+in. For the developer harness, set `JARVIS_RUN_MODE=push_to_talk` (Enter-gated) or
+`JARVIS_RUN_MODE=timed` with `JARVIS_PTT_SECONDS` (plus `JARVIS_MAX_TURNS` to stop
+after N turns). Copy `.env.example` to `.env` to override any setting locally;
+nothing in `.env` is committed.
 
 ### Running as a background service (macOS)
 

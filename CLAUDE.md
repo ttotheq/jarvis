@@ -43,7 +43,7 @@ Never push without a green `make check`. CI (`.github/workflows/ci.yml`) runs on
 
 The orchestrator (`jarvis.loop.VoiceLoop`) is a state machine: `IDLE → LISTENING → THINKING → SPEAKING`. Streaming overlaps THINKING and SPEAKING — a producer thread segments the `claude` token stream into sentences onto a queue while a consumer thread speaks them, so TTS starts on the *first complete sentence* rather than the full reply.
 
-`jarvis run` is still a **development harness**: it enters at LISTENING via Enter-gated push-to-talk (or timed turns via `JARVIS_PTT_SECONDS` in non-interactive shells). The always-on wake-word *daemon* is Phase 4 (in progress). Wake-word and VAD primitives exist and are measured separately.
+`jarvis run` now defaults to the **always-on wake-word runtime** (`run_mode=wake_word`): a turn opens at IDLE and blocks in `wait_for_wake_phrase` until "hey jarvis", then `capture_until_endpoint` records LISTENING until Silero VAD detects end-of-speech (or `listen_max_seconds`). It needs no keyboard, so it runs headless under `jarvis service`. `VoiceLoop.wait_for_wake` is the optional seam (None → the old developer harness, opening at LISTENING). `JARVIS_RUN_MODE=push_to_talk|timed` selects the Enter-gated / fixed-window harness modes.
 
 Module map — **Conventional Commit scopes match these module names** (`feat(stt):`, `fix(vad):`):
 
@@ -59,7 +59,7 @@ Module map — **Conventional Commit scopes match these module names** (`feat(st
 | `jarvis.vad` | Silero VAD endpointing (`Endpointer`) + raw-speech onset primitive |
 | `jarvis.persona` | Voice-mode system prompt + the pure conciseness/no-code metric |
 | `jarvis.permissions` | `PreToolUse` hook that verbally gates destructive Bash calls |
-| `jarvis.loop` | Turn orchestrator + barge-in watcher wiring |
+| `jarvis.loop` | Turn orchestrator + always-on entry point (wake-gated IDLE → VAD-endpointed LISTENING) + barge-in watcher wiring |
 | `jarvis.service` | macOS launchd LaunchAgent lifecycle (config-driven plist + `install`/`uninstall`/`status`) |
 
 ### The brain (`jarvis.brain`)

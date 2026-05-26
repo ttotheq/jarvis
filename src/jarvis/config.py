@@ -26,6 +26,20 @@ class PermissionMode(StrEnum):
     plan = "plan"
 
 
+class RunMode(StrEnum):
+    """How ``jarvis run`` enters a turn.
+
+    ``wake_word`` is the always-on runtime (IDLE waits for "hey jarvis", then VAD
+    endpoints the utterance) and the product default — it needs no keyboard, so it
+    runs headless under the launchd service. ``push_to_talk`` (Enter-gated) and
+    ``timed`` (fixed ``ptt_seconds`` window) are the developer-harness modes.
+    """
+
+    wake_word = "wake_word"
+    push_to_talk = "push_to_talk"
+    timed = "timed"
+
+
 def _default_whisper_dir() -> Path:
     return Path.home() / ".cache" / "jarvis" / "whisper"
 
@@ -76,11 +90,19 @@ class Settings(BaseSettings):
     claude_binary: str = "claude"
     permission_mode: PermissionMode = PermissionMode.accept_edits
 
-    # --- Push-to-talk runtime ---------------------------------------------
-    # When ptt_seconds is set, `jarvis run` records a fixed window per turn
-    # (hands-free, spoken cue) instead of Enter-gated push-to-talk — useful in
-    # non-interactive shells. max_turns stops the loop after N turns (None runs
-    # until Ctrl-C).
+    # --- Runtime mode ------------------------------------------------------
+    # wake_word (default) is the always-on cascade: IDLE waits for "hey jarvis",
+    # then VAD endpoints the utterance — no keyboard, so it runs under launchd.
+    # push_to_talk and timed are the developer-harness modes.
+    run_mode: RunMode = RunMode.wake_word
+    # Safety cap on a single LISTENING capture so a stuck endpointer can never
+    # record forever (wake_word mode).
+    listen_max_seconds: float = Field(default=30.0, gt=0)
+
+    # --- Push-to-talk runtime (developer harness) -------------------------
+    # In `timed` run mode, ptt_seconds is the fixed record window per turn
+    # (hands-free, spoken cue). max_turns stops the loop after N turns (None runs
+    # until Ctrl-C); the always-on service leaves it None.
     ptt_seconds: float | None = Field(default=None, gt=0)
     max_turns: int | None = Field(default=None, gt=0)
 

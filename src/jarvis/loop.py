@@ -8,12 +8,13 @@ the whole reply. That overlap of THINKING and SPEAKING is concurrency — a
 queue, while a **consumer** speaks sentences off the queue. While playback of
 sentence one blocks, the producer keeps pulling and segmenting later tokens.
 
-Wake word (IDLE→LISTENING) and VAD endpointing (LISTENING→THINKING) are separate
-Phase 2 goals; here ``record_turn`` still captures one utterance. Barge-in is
-Phase 3's cancellable SPEAKING state, tightened in G4.0 so the hot mic only
-interrupts on the wake phrase while Jarvis is talking. Every edge is injected,
-so the machine is tested without hardware (tests/test_loop*.py,
-tests/test_barge_in.py).
+Phase 4 wires the always-on entry point: the optional ``wait_for_wake`` seam
+parks a turn at IDLE until the wake phrase (``wait_for_wake_phrase``), then
+``record_turn`` captures the utterance until VAD end-of-speech
+(``capture_until_endpoint``). Barge-in is Phase 3's cancellable SPEAKING state,
+tightened in G4.0 so the hot mic only interrupts on the wake phrase while Jarvis
+is talking. Every edge is injected, so the machine is tested without hardware
+(tests/test_loop*.py, tests/test_always_on.py, tests/test_barge_in.py).
 """
 
 from __future__ import annotations
@@ -31,6 +32,15 @@ from jarvis.audio import Clip, FrameSource, Speaker, resample_mono_pcm16
 from jarvis.brain import SentenceStreamer
 from jarvis.stt import Transcriber
 from jarvis.tts import Synthesizer, speak
+from jarvis.vad import (
+    FRAME_BYTES as VAD_FRAME_BYTES,
+)
+from jarvis.vad import (
+    SAMPLE_RATE as VAD_SAMPLE_RATE,
+)
+from jarvis.vad import (
+    Endpointer,
+)
 from jarvis.wakeword import (
     FRAME_BYTES as WAKEWORD_FRAME_BYTES,
 )
@@ -93,6 +103,10 @@ class VoiceLoop:
     speaker: Speaker
     #: Optional observer notified on every state transition (used in tests).
     on_state: Callable[[State], None] | None = None
+    #: Optional wake gate; when set, each turn opens at IDLE and blocks here until
+    #: the wake phrase is heard before entering LISTENING (the always-on runtime).
+    #: ``None`` keeps the developer-harness behaviour: a turn opens at LISTENING.
+    wait_for_wake: Callable[[], None] | None = None
     #: Optional barge-in watcher; when set, the mic stays hot during SPEAKING and
     #: the wake phrase cancels playback + the in-flight stream (G3.1/G4.0).
     #: ``None`` keeps the Phase 2 behaviour: SPEAKING runs to completion.
@@ -109,8 +123,12 @@ class VoiceLoop:
 
         A blank transcript skips the brain entirely (LISTENING→IDLE). A reply
         with no speakable prose (e.g. all code) reaches THINKING but never
-        SPEAKING.
+        SPEAKING. With a ``wait_for_wake`` gate, the turn first parks at IDLE
+        until the wake phrase is heard (the always-on runtime).
         """
+        if self.wait_for_wake is not None:
+            self._enter(State.IDLE)
+            self.wait_for_wake()
         self._enter(State.LISTENING)
         clip = self.record_turn()
         transcript = self.transcribe(clip)
@@ -258,6 +276,22 @@ def _coerce_wakeword_frame(frame: bytes) -> bytes:
     return frame + b"\x00" * (WAKEWORD_FRAME_BYTES - len(frame))
 
 
+def _to_wakeword_frame(raw_frame: bytes, source_sample_rate: int) -> bytes:
+    """Resample a raw mic frame to 16 kHz (if needed) and coerce to wake geometry.
+
+    Shared by the IDLE wake gate and the SPEAKING barge-in watcher so the two
+    paths feed openWakeWord identically.
+    """
+    frame = raw_frame
+    if source_sample_rate != WAKEWORD_SAMPLE_RATE:
+        frame = resample_mono_pcm16(
+            raw_frame,
+            input_rate=source_sample_rate,
+            output_rate=WAKEWORD_SAMPLE_RATE,
+        )
+    return _coerce_wakeword_frame(frame)
+
+
 def build_wake_phrase_barge_in_watcher(
     source: FrameSource,
     *,
@@ -284,14 +318,7 @@ def build_wake_phrase_barge_in_watcher(
             except Exception:
                 logger.exception("barge-in wake watch read_error=1 during SPEAKING")
                 raise
-            frame = raw_frame
-            if source_sample_rate != WAKEWORD_SAMPLE_RATE:
-                frame = resample_mono_pcm16(
-                    raw_frame,
-                    input_rate=source_sample_rate,
-                    output_rate=WAKEWORD_SAMPLE_RATE,
-                )
-            frame = _coerce_wakeword_frame(frame)
+            frame = _to_wakeword_frame(raw_frame, source_sample_rate)
             score = listener.score(frame)
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
@@ -340,3 +367,155 @@ def build_default_barge_in_watcher(
         source_sample_rate=sample_rate,
         reset_source=reset_source,
     )
+
+
+def _reset(obj: object) -> None:
+    """Call ``obj.reset()`` if it exists — detectors/endpointers between turns."""
+    reset = getattr(obj, "reset", None)
+    if callable(reset):
+        reset()
+
+
+def wait_for_wake_phrase(
+    source: FrameSource,
+    *,
+    listener: WakeWordListener,
+    source_sample_rate: int = WAKEWORD_SAMPLE_RATE,
+    reset_source: Callable[[], None] | None = None,
+) -> None:
+    """Block reading mic frames until the wake phrase scores at/above threshold.
+
+    The IDLE primitive of the always-on runtime. Each raw frame is resampled and
+    coerced to openWakeWord's geometry, then scored; the call returns on the first
+    frame to cross ``listener.threshold``. Source and listener are injected so the
+    wake gate is unit-tested without a microphone.
+    """
+    if reset_source is not None:
+        reset_source()
+    _reset(listener.detect)
+    while True:
+        frame = _to_wakeword_frame(source(), source_sample_rate)
+        score = listener.score(frame)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("idle wake watch rms=%.4f score=%.3f", _pcm16_rms(frame), score)
+        if score >= listener.threshold:
+            logger.info("wake phrase detected score=%.3f", score)
+            return
+
+
+def capture_until_endpoint(
+    source: FrameSource,
+    *,
+    endpointer: Endpointer,
+    sample_rate: int,
+    max_seconds: float,
+    reset_source: Callable[[], None] | None = None,
+) -> Clip:
+    """Capture one utterance, ending on VAD trailing silence (or a duration cap).
+
+    The LISTENING primitive of the always-on runtime. Raw frames are accumulated
+    into the returned :class:`~jarvis.audio.Clip` at the capture ``sample_rate``;
+    a copy is resampled to Silero's 16 kHz and re-chunked into its exact
+    512-sample frames — any remainder is carried across reads, since the mic's
+    block size need not be a multiple of the VAD frame — then fed to the
+    ``Endpointer``. Capture stops on the endpoint, or once ``max_seconds`` of
+    audio has been read (a safety cap against a stuck endpointer). Source and
+    endpointer are injected so the re-chunking is unit-tested without hardware.
+    """
+    if max_seconds <= 0:
+        raise ValueError("max_seconds must be positive")
+    if reset_source is not None:
+        reset_source()
+    endpointer.reset()
+    _reset(endpointer.detect)
+
+    chunks: list[bytes] = []
+    vad_buffer = bytearray()
+    captured_samples = 0
+    max_samples = round(max_seconds * sample_rate)
+    fired = False
+    while not fired and captured_samples < max_samples:
+        raw = source()
+        chunks.append(raw)
+        captured_samples += len(raw) // 2
+        vad_bytes = (
+            raw
+            if sample_rate == VAD_SAMPLE_RATE
+            else resample_mono_pcm16(raw, input_rate=sample_rate, output_rate=VAD_SAMPLE_RATE)
+        )
+        vad_buffer.extend(vad_bytes)
+        while len(vad_buffer) >= VAD_FRAME_BYTES:
+            frame = bytes(vad_buffer[:VAD_FRAME_BYTES])
+            del vad_buffer[:VAD_FRAME_BYTES]
+            if endpointer.feed(frame):
+                fired = True
+                break
+    return Clip(samples=b"".join(chunks), sample_rate=sample_rate)
+
+
+def build_wait_for_wake(  # pragma: no cover - real mic + openWakeWord
+    source: FrameSource | None = None,
+    *,
+    source_sample_rate: int | None = None,
+    reset_source: Callable[[], None] | None = None,
+) -> Callable[[], None]:
+    """Wire the live IDLE wake gate: hot mic -> openWakeWord "hey jarvis"."""
+    from jarvis.audio import make_sounddevice_source
+    from jarvis.config import get_settings
+    from jarvis.wakeword import FRAME_SAMPLES, SAMPLE_RATE, build_default_listener
+
+    settings = get_settings()
+    sample_rate = settings.sample_rate if source_sample_rate is None else source_sample_rate
+    if source is None:
+        block_frames = max(1, round(sample_rate * FRAME_SAMPLES / SAMPLE_RATE))
+        source = make_sounddevice_source(
+            sample_rate, block_frames=block_frames, device=settings.input_device
+        )
+    listener = build_default_listener(settings)
+    mic: FrameSource = source
+
+    def _wait() -> None:
+        wait_for_wake_phrase(
+            mic,
+            listener=listener,
+            source_sample_rate=sample_rate,
+            reset_source=reset_source,
+        )
+
+    return _wait
+
+
+def build_vad_record_turn(  # pragma: no cover - real mic + Silero VAD
+    source: FrameSource | None = None,
+    *,
+    sample_rate: int | None = None,
+    max_seconds: float | None = None,
+    reset_source: Callable[[], None] | None = None,
+) -> Callable[[], Clip]:
+    """Wire the live LISTENING capture: hot mic -> Silero VAD endpointing."""
+    from jarvis.audio import make_sounddevice_source
+    from jarvis.config import get_settings
+    from jarvis.vad import build_default_endpointer
+    from jarvis.wakeword import FRAME_SAMPLES, SAMPLE_RATE
+
+    settings = get_settings()
+    rate = settings.sample_rate if sample_rate is None else sample_rate
+    cap = settings.listen_max_seconds if max_seconds is None else max_seconds
+    if source is None:
+        block_frames = max(1, round(rate * FRAME_SAMPLES / SAMPLE_RATE))
+        source = make_sounddevice_source(
+            rate, block_frames=block_frames, device=settings.input_device
+        )
+    endpointer = build_default_endpointer(settings)
+    mic: FrameSource = source
+
+    def _record() -> Clip:
+        return capture_until_endpoint(
+            mic,
+            endpointer=endpointer,
+            sample_rate=rate,
+            max_seconds=cap,
+            reset_source=reset_source,
+        )
+
+    return _record
