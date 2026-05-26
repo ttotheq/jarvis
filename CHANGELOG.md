@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 2 time-to-first-audio measurement (G2.3): `scripts/bench_latency.py`
+  gains a `--mode ttfa` path that composes the real first-audio cascade behind
+  injected per-stage timers (the `vad_silence_ms` hangover → whisper.cpp STT →
+  `claude -p` first-token → Kokoro's first audio chunk) and sums them per run —
+  the cascade to first audio is strictly sequential, so TTFA is the sum of the
+  stages, not their max (the G2.4 overlap shortens *total* turn time, not
+  time-to-*first*-audio). `claude` is spawned per run, matching real per-turn
+  behaviour (ADR-0003). Measured live over 20 runs: **p50 6.07 s, p95 7.75 s** —
+  full per-stage attribution in the Phase 2 doc Outcomes. The stage timers are
+  injected, so `tests/test_bench_ttfa.py` exercises the timing/aggregation with
+  fakes (no whisper, claude, or Kokoro in CI). `--no-hangover` reframes the
+  metric as endpoint-fire → first audio.
+- Phase 2 G2.3 target **renegotiated** against the measured distribution
+  (recorded in the Phase 2 doc): the original ≤ 1.5 s p50 / ≤ 2.5 s p95 is
+  unreachable under the spawn-per-turn model and is replaced by a measured
+  spawn-per-turn baseline (≤ 6.5 s p50 / ≤ 8 s p95) plus a forward target
+  (≤ 2.0 s p50) gated on a persistent-brain re-architecture (the ADR-0003
+  revisit). See Outcomes for the three options and trade-offs.
 - Phase 2 VAD endpointing (G2.2): new `jarvis.vad` module decides end-of-speech
   in the LISTENING state. It mirrors `jarvis.wakeword` — the native Silero VAD
   model is wrapped as an injected `Detector` callable (one 512-sample / 32 ms
