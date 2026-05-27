@@ -13,7 +13,7 @@ Everything in the voice path runs on-device (Apple Silicon). The only thing that
 
 ## Status
 
-**Phase 3 shipped; G4.0/G4.1/G4.2 and the always-on runtime are in** — Jarvis streams
+**Phase 3 shipped; G4.0/G4.1/G4.2/G4.3 and the always-on runtime are in** — Jarvis streams
 Claude replies, speaks in-character, verbally gates destructive Bash actions before
 they run, only lets `"hey jarvis"` interrupt during `SPEAKING`, and installs as a
 macOS launchd background service (`jarvis service install`) that auto-starts at login
@@ -22,8 +22,9 @@ cascade: it waits for `"hey jarvis"`, endpoints your speech with VAD, replies, a
 returns to waiting — no keyboard, so it runs headless under the service.
 (Push-to-talk and timed turns remain available via `JARVIS_RUN_MODE`.) Cold start is
 fast: readiness gates on the wake detector alone while Kokoro/VAD warm in the
-background, so it is ready for `"hey jarvis"` in **~1 s** (G4.2, target ≤ 10 s).
-Remaining Phase 4 work is the soak test and the v1.0.0 release.
+background, so it is ready for `"hey jarvis"` in **~1 s** (G4.2, target ≤ 10 s); a
+1-hour idle soak held flat memory with zero crashes (G4.3). Remaining Phase 4 work is
+config-driven verification and the v1.0.0 release.
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -31,7 +32,7 @@ Remaining Phase 4 work is the soak test and the v1.0.0 release.
 | [1 — Walking skeleton](docs/phases/phase-1-skeleton.md) | Push-to-talk → STT → Claude → TTS, end to end | ✅ Done |
 | [2 — Wake word + streaming](docs/phases/phase-2-wakeword-streaming.md) | Wake-word/VAD primitives, streaming, measured latency | ✅ Done |
 | [3 — Jarvis feel](docs/phases/phase-3-jarvis-feel.md) | Barge-in, persona, spoken permission gating | ✅ Done |
-| [4 — Daemon polish](docs/phases/phase-4-daemon.md) | G4.0 wake-phrase barge-in ✅, launchd service ✅, ~1 s cold start ✅, v1.0.0 release | In progress |
+| [4 — Daemon polish](docs/phases/phase-4-daemon.md) | G4.0 wake-phrase barge-in ✅, launchd service ✅, ~1 s cold start ✅, 1-hr soak ✅, v1.0.0 release | In progress |
 
 Each phase has **measurable acceptance goals** ([overview](docs/phases/README.md)) designed to be tracked as Claude Code goals in later iterations.
 

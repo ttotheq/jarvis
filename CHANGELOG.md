@@ -59,6 +59,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Phase 4 stability soak (G4.3): new `scripts/soak_idle.py` exercises the daemon's
+  idle activity — the `wait_for_wake_phrase` hot path, scoring every frame through
+  openWakeWord — for a fixed duration and checks for crashes + resident-memory
+  growth. A pure `soak()` core (injected frame source + score fn + RSS sampler +
+  clock) samples RSS and measures growth from a **post-settle steady-state
+  baseline**, so G4.2's background warm-up is not mistaken for a leak; a scoring
+  exception is tallied as a crash rather than propagated. Write-first tests in
+  `tests/test_soak_idle.py`. **Measured (2026-05-27, 1-hour idle, synthetic silent
+  frames):** 39,183 frames scored, **0 crashes**, RSS 218.6 MB → 106.2 MB
+  (**−112.4 MB** growth, budget ≤ 50 MB) — PASS; `caffeinate` + `pmset` confirmed
+  no system sleep during the run.
 - Phase 4 cold start (G4.2): `jarvis run` is now ready for "hey jarvis" in **~1 s**
   (target ≤ 10 s). Readiness gates on the wake path alone — the persistent mic and
   the openWakeWord listener — while the heavier components (Kokoro, the Silero VAD

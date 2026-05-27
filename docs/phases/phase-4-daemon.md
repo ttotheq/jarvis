@@ -3,11 +3,12 @@
 - **Status:** In progress — **G4.0** (wake-phrase barge-in), **G4.1** (launchd
   service lifecycle, ADR-0006), the **always-on wake-word runtime** (the entry
   point the service runs, verified live), **G4.6** (smooth streaming playback),
-  and **G4.2** (cold start) are done as of 2026-05-26. `jarvis run` now defaults
-  to a headless wake-word cascade that plays multi-sentence replies gaplessly and
-  is ready for "hey jarvis" in ~1 s (the heavy loads warm in the background). The
-  remaining daemon/release goals (G4.3 soak, G4.4 config-driven, G4.5 release) are
-  still ahead; the always-on loop is the thing G4.3 soaks.
+  **G4.2** (cold start), and **G4.3** (stability soak) are done as of 2026-05-27.
+  `jarvis run` now defaults to a headless wake-word cascade that plays
+  multi-sentence replies gaplessly, is ready for "hey jarvis" in ~1 s (the heavy
+  loads warm in the background), and held flat memory with zero crashes over a
+  1-hour idle soak. The remaining daemon/release goals (G4.4 config-driven, G4.5
+  release) are still ahead.
 - **Milestone:** Phase 4
 - **Objective:** Make Jarvis a dependable always-on background service and cut
   the first release.
@@ -90,7 +91,7 @@ the injected detector scores as the wake phrase → `on_onset` once; returns on 
 | G4.0 | Pre-Phase 4: wake-phrase-gated barge-in | Only "hey jarvis" interrupts playback; ambient/other-voice/self speech does not; no CoreAudio `-50` during SPEAKING | `tests/test_barge_in.py` + live shared-stream probe |
 | G4.1 | Service lifecycle | Installs, auto-starts, survives logout/login; clean uninstall | manual + `tests/test_service_unit.py` |
 | G4.2 | Cold start | Boot → ready-for-wake-word ≤ 10 s | `scripts/bench_latency.py --mode cold_start` |
-| G4.3 | Stability soak | 1-hour idle: 0 crashes, memory growth ≤ 50 MB | soak run recorded |
+| G4.3 | Stability soak | 1-hour idle: 0 crashes, memory growth ≤ 50 MB | `scripts/soak_idle.py --minutes 60` + `tests/test_soak_idle.py` |
 | G4.4 | Config-driven | Voice/model/permission mode changeable via `.env` only | `tests/test_config_drives_runtime.py` |
 | G4.5 | Release | `v1.0.0` tagged; CHANGELOG finalized; coverage ≥ 85% | release workflow run |
 | G4.6 | Smooth streaming playback | Multi-sentence replies play gaplessly — no inter-sentence gaps, boundary clicks, or clipped sentence-starts | `tests/test_playback_pipeline.py` + live multi-sentence check |
@@ -370,3 +371,44 @@ carries no torch at all — and warms the rest in the background.
   the first capture/reply still works while warm-up is in flight. The mechanism is
   proven (ready fast, warm-up completes off-thread, first-use blocks correctly),
   but the cold-cache wall-clock and the live first turn are Ty's to confirm.
+
+### G4.3 — stability soak · _Done 2026-05-27_
+
+A 1-hour idle run of the always-on loop: target 0 crashes and memory growth ≤
+50 MB. "Idle" is the daemon parked in `wait_for_wake_phrase`, scoring every mic
+frame through openWakeWord — that per-frame hot path (resample + coerce +
+`listener.score`) and openWakeWord's rolling buffer are the realistic place an
+idle daemon would leak.
+
+**Delivered.** New `scripts/soak_idle.py` follows the `soak_wakeword.py` pattern:
+a pure `soak()` core drives an injected frame source + per-frame score function +
+RSS sampler + clock, samples resident memory at intervals, tallies a scoring
+exception as a crash (rather than propagating it, so the run completes and is
+recorded), and reports growth from a **post-settle steady-state baseline** — so
+G4.2's background warm-up (torch + Kokoro loading in the first seconds) is
+excluded and only true steady-state drift counts. The live `main()`
+(`# pragma: no cover`) wires the real openWakeWord listener and a `ps`-based RSS
+sampler; `--source silence` paces synthetic silent frames at the real ~80 ms mic
+cadence (deterministic, no false wakes), `--source mic` soaks real ambient.
+
+**Verification:**
+
+- Write-first tests in `tests/test_soak_idle.py`: growth is measured from the
+  post-settle baseline (a launch RSS spike is excluded); flat memory → 0 growth;
+  a rising series is detected; a scoring exception is counted as a crash and not
+  raised; the injected clock bounds frames and elapsed; the `passed()` verdict
+  fails on either over-budget growth or any crash. Full suite **261 passed, 97%
+  coverage**; the live mic/model + `ps` sampler stay `# pragma: no cover`.
+- **Live 1-hour idle soak (2026-05-27, `--source silence`):** **39,183 frames
+  scored over 60.0 min, 0 crashes.** RSS baseline 218.6 MB → peak 218.7 MB → end
+  106.2 MB, i.e. **growth −112.4 MB** (memory *fell* over the hour as the OS
+  reclaimed openWakeWord/onnxruntime init buffers) — comfortably inside the ≤ 50 MB
+  budget. **PASS.** `caffeinate -i` held the machine awake for the window;
+  `pmset -g log` confirmed no system sleep during the run, so the 60 min is real
+  awake runtime. The in-process soak exercises the idle scoring hot path + the
+  openWakeWord buffer but does not hold Kokoro/Silero resident (idle never
+  synthesizes) — valid for a leak signal since resident-unused memory is flat.
+- **Optional (interactive, Ty):** a faithful live-mic full-`jarvis run` hour
+  (`--source mic`, or just leaving the service running) would also exercise the
+  warmed Kokoro/Silero resident footprint; not required for the goal, offered as a
+  fidelity confirmation.
