@@ -319,7 +319,7 @@ class Brain:
         # The voice persona rides on both call shapes: it is appended here, so the
         # ``argv[3:3]`` --output-format insertions and the trailing --resume in the
         # build methods leave it intact (flag order is irrelevant to ``claude``).
-        return [
+        argv = [
             self._settings.claude_binary,
             "-p",
             prompt,
@@ -328,6 +328,12 @@ class Brain:
             "--append-system-prompt",
             VOICE_SYSTEM_PROMPT,
         ]
+        # `--model` is appended (not inserted at a fixed index) for the same reason
+        # as the persona: it must not disturb the ``argv[3:3]`` --output-format
+        # insert or the trailing --resume. Omitted when unset so the CLI default holds.
+        if self._settings.claude_model is not None:
+            argv += ["--model", self._settings.claude_model]
+        return argv
 
     def _build_argv(self, prompt: str) -> list[str]:
         argv = self._base_argv(prompt)

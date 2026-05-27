@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     # --- Claude Code brain -------------------------------------------------
     claude_binary: str = "claude"
     permission_mode: PermissionMode = PermissionMode.accept_edits
+    # Which Claude model the brain runs. None ⇒ omit `--model` so the `claude`
+    # CLI default holds (don't pin a model name that can be retired); set e.g.
+    # `claude-opus-4-7` or `claude-sonnet-4-6` to override.
+    claude_model: str | None = None
 
     # --- Runtime mode ------------------------------------------------------
     # wake_word (default) is the always-on cascade: IDLE waits for "hey jarvis",

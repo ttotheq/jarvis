@@ -3,12 +3,13 @@
 - **Status:** In progress — **G4.0** (wake-phrase barge-in), **G4.1** (launchd
   service lifecycle, ADR-0006), the **always-on wake-word runtime** (the entry
   point the service runs, verified live), **G4.6** (smooth streaming playback),
-  **G4.2** (cold start), and **G4.3** (stability soak) are done as of 2026-05-27.
-  `jarvis run` now defaults to a headless wake-word cascade that plays
-  multi-sentence replies gaplessly, is ready for "hey jarvis" in ~1 s (the heavy
-  loads warm in the background), and held flat memory with zero crashes over a
-  1-hour idle soak. The remaining daemon/release goals (G4.4 config-driven, G4.5
-  release) are still ahead.
+  **G4.2** (cold start), **G4.3** (stability soak), and **G4.4** (config-driven
+  runtime) are done as of 2026-05-27. `jarvis run` now defaults to a headless
+  wake-word cascade that plays multi-sentence replies gaplessly, is ready for
+  "hey jarvis" in ~1 s (the heavy loads warm in the background), held flat memory
+  with zero crashes over a 1-hour idle soak, and is fully retargetable via `.env`
+  (voice, Claude model, STT model, permission mode) with no code edit. The only
+  remaining goal is **G4.5** (the v1.0.0 release).
 - **Milestone:** Phase 4
 - **Objective:** Make Jarvis a dependable always-on background service and cut
   the first release.
@@ -412,3 +413,43 @@ cadence (deterministic, no false wakes), `--source mic` soaks real ambient.
   (`--source mic`, or just leaving the service running) would also exercise the
   warmed Kokoro/Silero resident footprint; not required for the goal, offered as a
   fidelity confirmation.
+
+### G4.4 — config-driven runtime · _Done 2026-05-27_
+
+The runtime is retargetable via `.env` alone — voice, Claude model, STT model, and
+permission mode change with **no code edit**. This was mostly a verification goal:
+three of the four knobs were already wired, and the work closed the one real gap
+(the Claude model) and proved the whole set with a write-first acceptance test.
+
+- **Already wired (proven, not changed):** `JARVIS_TTS_VOICE` / `JARVIS_TTS_SPEED`
+  reach `KokoroSynthesizer.__call__` (passed straight to the Kokoro pipeline),
+  `JARVIS_STT_MODEL` resolves the GGML path in `WhisperCppTranscriber`, and
+  `JARVIS_PERMISSION_MODE` reaches `--permission-mode` on both `Brain` call shapes
+  (`ask()` and `stream()`).
+- **Gap closed — the Claude model.** There was no `claude_model` setting and the
+  brain never passed `--model`, so the model rode the `claude` CLI default and was
+  not `.env`-changeable. Added `claude_model: str | None = None` to
+  `jarvis.config.Settings` (with a `.env.example` line) and wired it into
+  `Brain._base_argv`: when set, it appends `--model <value>`; when `None` it is
+  omitted so the CLI default holds. The default is **unset, not pinned** — pinning
+  a model name that can later be retired would be a maintenance hazard, and the CLI
+  default is the safe baseline. The flag is *appended* (not inserted at a fixed
+  index) so it cannot disturb the `argv[3:3]` `--output-format` insert or the
+  trailing `--resume`; every existing flag-relative argv test stayed green.
+- **Scope (decided with Ty):** "model" means the **Claude reasoning model**. The
+  whisper STT model is a separate, already-wired knob (`JARVIS_STT_MODEL`); G4.4
+  did not rename or rescope it.
+
+**Verification:**
+
+- Write-first `tests/test_config_drives_runtime.py` (failed first on the missing
+  `--model`/`claude_model`, then passed): a `JARVIS_`-prefixed env override flows to
+  the seam the live component reads — `--permission-mode` and the new `--model` on
+  both brain call shapes (with `--model` *absent* when unset, and the
+  `--output-format`/`--resume` invariants preserved when present), `tts_voice` /
+  `tts_speed` reaching the settings the Kokoro backend consumes, and `stt_model`
+  reaching the constructed `WhisperCppTranscriber`. Per ADR-0005 the native
+  backends are not spawned — the test asserts at the settings→argv / settings→object
+  seam, so it runs in CI without the `voice` extra. The full suite stayed green at
+  **85%+ coverage** with no new `# pragma: no cover`.
+- No live leg: the change is pure settings→argv wiring, fully covered by unit tests.

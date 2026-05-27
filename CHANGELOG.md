@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `JARVIS_CLAUDE_MODEL` selects which Claude model the brain runs (G4.4): when
+  set, the brain passes `--model <value>` to `claude -p`; when unset it is omitted
+  so the CLI default holds. This closes the last config-drive gap — voice
+  (`JARVIS_TTS_VOICE`/`JARVIS_TTS_SPEED`), STT model (`JARVIS_STT_MODEL`),
+  permission mode (`JARVIS_PERMISSION_MODE`), and now the Claude model are all
+  changeable via `.env` with no code edit (`tests/test_config_drives_runtime.py`).
+
 ### Changed
 
 - `jarvis run` now defaults to the always-on **wake_word** mode (was Enter-gated
