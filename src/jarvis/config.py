@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     ptt_seconds: float | None = Field(default=None, gt=0)
     max_turns: int | None = Field(default=None, gt=0)
 
+    # --- Status chimes -----------------------------------------------------
+    # Short audio cues on state transitions for eyes-free feedback under the
+    # launchd service (READY at startup, LISTENING on wake-acknowledged,
+    # THINKING on capture-ended). Tones are generated on the fly (jarvis.chimes).
+    chimes_enabled: bool = True
+
     # --- launchd service (G4.1) -------------------------------------------
     # Reverse-DNS label for the LaunchAgent; also names the plist file
     # (~/Library/LaunchAgents/<label>.plist) and the launchctl service target.

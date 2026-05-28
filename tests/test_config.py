@@ -32,6 +32,13 @@ def test_run_mode_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.listen_max_seconds == 12.5
 
 
+def test_chimes_enabled_defaults_true_and_env_disables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Status chimes default on (eyes-free service feedback); .env can mute them."""
+    assert Settings().chimes_enabled is True
+    monkeypatch.setenv("JARVIS_CHIMES_ENABLED", "false")
+    assert Settings().chimes_enabled is False
+
+
 def test_listen_max_seconds_must_be_positive() -> None:
     with pytest.raises(ValidationError):
         Settings(listen_max_seconds=0)

@@ -59,6 +59,7 @@ Module map — **Conventional Commit scopes match these module names** (`feat(st
 | `jarvis.vad` | Silero VAD endpointing (`Endpointer`) + raw-speech onset primitive |
 | `jarvis.persona` | Voice-mode system prompt + the pure conciseness/no-code metric |
 | `jarvis.permissions` | `PreToolUse` hook that verbally gates destructive Bash calls |
+| `jarvis.chimes` | Generated status tones (READY / LISTENING / THINKING) + the `on_state` observer that voices them through the persistent speaker |
 | `jarvis.loop` | Turn orchestrator + always-on entry point (wake-gated IDLE → VAD-endpointed LISTENING) + barge-in watcher wiring |
 | `jarvis.service` | macOS launchd LaunchAgent lifecycle (config-driven plist + `install`/`uninstall`/`status`) |
 

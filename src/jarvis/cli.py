@@ -187,6 +187,7 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
 
     from jarvis.audio import SoundDeviceMicrophone
     from jarvis.brain import Brain
+    from jarvis.chimes import READY, build_chime_observer
     from jarvis.config import RunMode
     from jarvis.loop import (
         BargeInWatcher,
@@ -272,11 +273,17 @@ def run() -> None:  # pragma: no cover - end-to-end hardware path, checked manua
             speaker=speaker,
             wait_for_wake=wait_for_wake,
             watch_barge_in=lambda on_onset, stop: barge_in.get()(on_onset, stop),
+            # Status chimes: eyes-free cues for the headless service. LISTENING
+            # and THINKING chime per turn; READY plays once below at startup.
+            on_state=build_chime_observer(speaker, enabled=settings.chimes_enabled),
         )
         if settings.run_mode is RunMode.wake_word:
             typer.echo('Jarvis is ready. Say "hey jarvis" to begin. Press Ctrl-C to stop.')
         else:
             typer.echo("Jarvis is listening. Press Ctrl-C to stop.")
+        if settings.chimes_enabled:
+            speaker.play(READY)
+            speaker.wait()  # drain so the boot cue is heard before warmup logs
         warm_in_background(*deferred)  # warm the deferred loads after readiness
         try:
             turns = loop.converse(should_continue=_continue_for(settings.max_turns))
