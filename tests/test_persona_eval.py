@@ -98,6 +98,20 @@ def test_persona_prompt_encodes_contract() -> None:
     # Advisor register, addresses the user as "sir".
     assert "advisor" in lowered
     assert "sir" in lowered
+    # Runtime self-awareness: a background daemon with no terminal/screen of
+    # its own — so it cannot rely on a permission prompt landing somewhere
+    # the user can see (fixed 2026-05-27 after live failures opening
+    # ~/.claude/CLAUDE.md and Pages.app).
+    assert "daemon" in lowered or "no terminal" in lowered or "no screen" in lowered
+    # Open-in-editor rule for visual access: replaces the original "on your
+    # screen, sir" example, which assumed an interactive terminal that no
+    # longer exists under the launchd service.
+    assert "open" in lowered
+    # Do not theater-confirm safe actions — just run them. Verbal "yes" can
+    # only ever be ordinary conversation, never a real permission grant
+    # (the real gate is jarvis.permissions, and it only fires on destructive
+    # Bash anyway).
+    assert "non-destructive" in lowered or "safe" in lowered
 
 
 # --- the flag is wired into both call shapes ------------------------------
