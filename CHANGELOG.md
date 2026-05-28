@@ -6,6 +6,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Wire the verbal permission gate as a real Claude Code hook. The
+  `jarvis.permissions` module, its classifier, and `build_live_confirm` shipped
+  in G3.3, but the hook was never registered in any `settings.json` the headless
+  `claude -p` child reads — only the persona system prompt told Claude to *speak*
+  the confirmation. The live failure mode (reported 2026-05-27, "asked to open a
+  word-processing app, said yes, nothing happened"): persona theater asked the
+  question, the verbal "yes" was just the next wake-phrase turn, and Claude's
+  follow-up `Bash(open -a …)` hit Claude Code's real default permission layer
+  with no terminal/GUI for it to surface on. Fix:
+  - Register a `PreToolUse` hook on the `Bash` matcher in the new project-scoped
+    `.claude/settings.json`, pointed at `scripts/permission-hook.sh`. The shim
+    resolves the project venv from its own location (no hard-coded path) and
+    execs `python -m jarvis.permissions`.
+  - Reorder `permissions.main()` so the payload is parsed first and the live
+    confirm is only constructed for *destructive* calls. Without this, every
+    `ls` / `git status` would spawn a process that loads Kokoro + whisper.cpp.
+    New write-first test `test_main_skips_live_confirm_build_on_non_destructive`
+    monkeypatches `build_live_confirm` to assert the fast path never touches it.
+
+### Added
+
+- Project-scoped Claude Code allowlist at `.claude/settings.json` that pre-approves
+  `WebFetch` for the headless `claude` child Jarvis spawns. Without it, asking
+  Jarvis a question that needed a web lookup (e.g. weather) silently stalled:
+  `--permission-mode acceptEdits` auto-approves file edits but not WebFetch, the
+  `jarvis.permissions` verbal gate only classifies `Bash`, and the daemon has no
+  terminal or GUI surface for Claude Code's default interactive prompt to land on.
+  Scoped to the project so interactive Claude Code sessions outside Jarvis keep
+  the default WebFetch gate. A proper verbal gate for WebFetch is a Phase 5 /
+  Jarvis 2.0 enhancement (would extend `jarvis.permissions` past the Bash matcher).
+
 ### Documentation
 
 - `docs/adr/0007-rebuild-brain-on-claude-agent-sdk.md` records the decision to

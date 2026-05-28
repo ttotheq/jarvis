@@ -280,9 +280,22 @@ def main(
     stdin = stdin if stdin is not None else sys.stdin
     stdout = stdout if stdout is not None else sys.stdout
     stderr = stderr if stderr is not None else sys.stderr
+    payload = json.load(stdin)
+    # Fast path: non-destructive calls allow without touching audio. The live
+    # confirm initialises Kokoro + whisper.cpp, so building it on every Bash
+    # call (ls, git status, …) would make the hook prohibitively slow once
+    # registered on the Bash matcher. Defer construction until we know we need it.
+    tool_name = str(payload.get("tool_name", ""))
+    tool_input = payload.get("tool_input") or {}
+    if not is_destructive(tool_name, tool_input):
+        json.dump(
+            _decision("allow", "Read-only or non-destructive; no confirmation needed."),
+            stdout,
+        )
+        stdout.write("\n")
+        return 0
     if confirm is None:  # pragma: no cover - live audio path, exercised manually
         confirm = build_live_confirm()
-    payload = json.load(stdin)
     output = decide(payload, confirm)["hookSpecificOutput"]
     if output["permissionDecision"] == "deny":
         stderr.write(output["permissionDecisionReason"] + "\n")
