@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-27
+
+First release. Jarvis is a local-first voice cascade for Claude Code: "hey
+jarvis" wakes it, your speech is endpointed and transcribed on-device, the real
+`claude` CLI reasons in headless mode, and the reply is spoken back in a refined
+British register — with wake-phrase barge-in, a spoken permission gate for
+destructive actions, and a macOS launchd service for unattended always-on use.
+This entry consolidates all work across Phases 0–4.
+
 ### Added
 
 - `JARVIS_CLAUDE_MODEL` selects which Claude model the brain runs (G4.4): when
@@ -14,60 +23,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`JARVIS_TTS_VOICE`/`JARVIS_TTS_SPEED`), STT model (`JARVIS_STT_MODEL`),
   permission mode (`JARVIS_PERMISSION_MODE`), and now the Claude model are all
   changeable via `.env` with no code edit (`tests/test_config_drives_runtime.py`).
-
-### Changed
-
-- `jarvis run` now defaults to the always-on **wake_word** mode (was Enter-gated
-  push-to-talk). Push-to-talk and timed turns remain available via
-  `JARVIS_RUN_MODE`. `JARVIS_PTT_SECONDS` no longer implicitly selects timed mode
-  — set `JARVIS_RUN_MODE=timed` explicitly (it then sizes the per-turn window).
-- TTS playback now uses a persistent output stream (`SoundDeviceStreamingSpeaker`)
-  instead of a fresh `sd.play` per sentence; `build_default_speaker` returns it and
-  the dead per-clip `SoundDeviceSpeaker` was removed (G4.6).
-
-- Documentation/status alignment after Phase 3: the repo-level docs now reflect
-  that **Phase 3 is done**, **G4.0 is done**, Phase 4 is now in progress, the
-  default `jarvis run` path is still the development push-to-talk / timed-turn
-  harness, and the architecture doc now carries both the measured G2.3 latency
-  reality (spawn-per-turn baseline plus the persistent-brain forward target) and
-  the shipped wake-phrase barge-in topology. `CONTRIBUTING.md` and the
-  phase-plan overview now state explicitly that closing a phase means updating
-  every status surface in the same change.
-- G4.0 live barge-in: `jarvis run` now keeps one persistent microphone open
-  across LISTENING capture and SPEAKING, resamples frames to openWakeWord's
-  16 kHz geometry when needed, and only interrupts on `"hey jarvis"` using
-  `wake_threshold`. Setting `JARVIS_LOG_LEVEL=DEBUG` emits per-frame RMS +
-  wake-score instrumentation during SPEAKING.
-
-### Documentation
-
-- Added `CLAUDE.md`, an onboarding guide for Claude Code: the voice-cascade
-  architecture, the common commands, the non-negotiable conventions, and the two
-  gotchas worth flagging (the `PreToolUse` exit-2 deny protocol and the
-  `stream-json` + `--verbose` requirement).
-- Corrected `CONTRIBUTING.md` to state the coverage gate as **85%** (the value
-  enforced in `pyproject.toml`); it previously still said 80%.
-
-### Fixed
-
-- G4.0 concurrent audio I/O: the live barge-in watcher no longer opens a second
-  input stream while Kokoro output is active, which was the Phase 3 cause of the
-  CoreAudio `||PaMacCore (AUHAL)|| err='-50'` and deterministic self-trigger.
-  Verified live on 2026-05-26 by reading 12 valid openWakeWord frames during a
-  24 kHz playback clip and 43 frames during a real Kokoro self-speech clip, both
-  with `errors=[]` and no `-50`.
-- Permission gate (G3.3) blocking protocol: the live end-to-end demo exposed that
-  `claude` 2.1.150 does **not** block a tool when a `PreToolUse` hook emits
-  `permissionDecision: "deny"` as stdout JSON — the tool runs anyway. `main` now
-  delivers a denial via the **exit-code protocol** (reason on stderr, exit 2, which
-  Claude Code honors) and emits an allow as the documented stdout JSON at exit 0;
-  `decide` stays pure and still returns the documented decision dict. Verified end
-  to end against real `claude` (answering "no" blocks the `rm` and the file
-  survives; "yes" lets it run). New `tests/test_permission_gate.py` cases pin the
-  exit-2/stderr deny and stdout-JSON allow emission.
-
-### Added
-
 - Phase 4 stability soak (G4.3): new `scripts/soak_idle.py` exercises the daemon's
   idle activity — the `wait_for_wake_phrase` hot path, scoring every frame through
   openWakeWord — for a fixed duration and checks for crashes + resident-memory
@@ -290,27 +245,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Streaming TTFT measured at 2.76 s p50 / 3.24 s p95 — recorded in the Phase 2
   doc, which flags G2.3 (time-to-first-audio ≤ 1.5 s p50) as unreachable under the
   spawn-per-turn model and pending renegotiation.
-
-### Changed
-
-- The `jarvis.audio.Speaker` protocol now requires a `stop()` method (alongside
-  `play`) so playback can be aborted mid-clip for barge-in; `jarvis.loop.VoiceLoop`
-  gains optional `watch_barge_in` and `clock` fields and `Turn` gains `barged_in` /
-  `barge_in_latency_s`. All additions are backward-compatible defaults — a loop
-  built without a watcher behaves exactly as in Phase 2.
-- `wake_threshold` default raised **0.5 → 0.9** (config + `.env.example`), tuned
-  against the G2.1 soak: 0.5 let "hey X" near-misses through (~10 false-accepts /
-  30 min), while 0.9 holds them to 1 / 30 min at 100% true-accept.
-- `jarvis.loop.VoiceLoop` now takes a `stream: Callable[[str], Iterator[str]]`
-  (the brain's token stream) instead of a `Brain` instance, and exposes the
-  `State` enum and an optional `on_state` transition observer.
-
-### Fixed
-
-- `OpenWakeWordDetector` no longer calls a non-existent `openwakeword.utils.download_models`
-  (the pretrained `hey_jarvis` ONNX ships bundled); it loads that bundled model path
-  directly, so the native detector works on first use.
-
 - Phase 1 walking skeleton (push-to-talk): `jarvis.brain` drives Claude Code
   headlessly (`claude -p --output-format json`), parsing `.result`/`.session_id`
   and resuming across turns via `--resume`; `extract_speakable()` strips fenced
@@ -339,7 +273,72 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   coverage floor; a `make check` target that mirrors CI.
 - CI workflow (lint + type + test on macOS) and a tag-driven release workflow.
 - GitHub repository conventions: issue/PR templates, CODEOWNERS, Dependabot.
+
+### Changed
+
+- `jarvis run` now defaults to the always-on **wake_word** mode (was Enter-gated
+  push-to-talk). Push-to-talk and timed turns remain available via
+  `JARVIS_RUN_MODE`. `JARVIS_PTT_SECONDS` no longer implicitly selects timed mode
+  — set `JARVIS_RUN_MODE=timed` explicitly (it then sizes the per-turn window).
+- TTS playback now uses a persistent output stream (`SoundDeviceStreamingSpeaker`)
+  instead of a fresh `sd.play` per sentence; `build_default_speaker` returns it and
+  the dead per-clip `SoundDeviceSpeaker` was removed (G4.6).
+- G4.0 live barge-in: `jarvis run` now keeps one persistent microphone open
+  across LISTENING capture and SPEAKING, resamples frames to openWakeWord's
+  16 kHz geometry when needed, and only interrupts on `"hey jarvis"` using
+  `wake_threshold`. Setting `JARVIS_LOG_LEVEL=DEBUG` emits per-frame RMS +
+  wake-score instrumentation during SPEAKING.
+- The `jarvis.audio.Speaker` protocol now requires a `stop()` method (alongside
+  `play`) so playback can be aborted mid-clip for barge-in; `jarvis.loop.VoiceLoop`
+  gains optional `watch_barge_in` and `clock` fields and `Turn` gains `barged_in` /
+  `barge_in_latency_s`. All additions are backward-compatible defaults — a loop
+  built without a watcher behaves exactly as in Phase 2.
+- `wake_threshold` default raised **0.5 → 0.9** (config + `.env.example`), tuned
+  against the G2.1 soak: 0.5 let "hey X" near-misses through (~10 false-accepts /
+  30 min), while 0.9 holds them to 1 / 30 min at 100% true-accept.
+- `jarvis.loop.VoiceLoop` now takes a `stream: Callable[[str], Iterator[str]]`
+  (the brain's token stream) instead of a `Brain` instance, and exposes the
+  `State` enum and an optional `on_state` transition observer.
+
+### Fixed
+
+- G4.0 concurrent audio I/O: the live barge-in watcher no longer opens a second
+  input stream while Kokoro output is active, which was the Phase 3 cause of the
+  CoreAudio `||PaMacCore (AUHAL)|| err='-50'` and deterministic self-trigger.
+  Verified live on 2026-05-26 by reading 12 valid openWakeWord frames during a
+  24 kHz playback clip and 43 frames during a real Kokoro self-speech clip, both
+  with `errors=[]` and no `-50`.
+- Permission gate (G3.3) blocking protocol: the live end-to-end demo exposed that
+  `claude` 2.1.150 does **not** block a tool when a `PreToolUse` hook emits
+  `permissionDecision: "deny"` as stdout JSON — the tool runs anyway. `main` now
+  delivers a denial via the **exit-code protocol** (reason on stderr, exit 2, which
+  Claude Code honors) and emits an allow as the documented stdout JSON at exit 0;
+  `decide` stays pure and still returns the documented decision dict. Verified end
+  to end against real `claude` (answering "no" blocks the `rm` and the file
+  survives; "yes" lets it run). New `tests/test_permission_gate.py` cases pin the
+  exit-2/stderr deny and stdout-JSON allow emission.
+- `OpenWakeWordDetector` no longer calls a non-existent `openwakeword.utils.download_models`
+  (the pretrained `hey_jarvis` ONNX ships bundled); it loads that bundled model path
+  directly, so the native detector works on first use.
+
+### Documentation
+
+- Added `CLAUDE.md`, an onboarding guide for Claude Code: the voice-cascade
+  architecture, the common commands, the non-negotiable conventions, and the two
+  gotchas worth flagging (the `PreToolUse` exit-2 deny protocol and the
+  `stream-json` + `--verbose` requirement).
+- Corrected `CONTRIBUTING.md` to state the coverage gate as **85%** (the value
+  enforced in `pyproject.toml`); it previously still said 80%.
+- Documentation/status alignment after Phase 3: the repo-level docs now reflect
+  that **Phase 3 is done**, **G4.0 is done**, Phase 4 is now in progress, the
+  default `jarvis run` path is still the development push-to-talk / timed-turn
+  harness, and the architecture doc now carries both the measured G2.3 latency
+  reality (spawn-per-turn baseline plus the persistent-brain forward target) and
+  the shipped wake-phrase barge-in topology. `CONTRIBUTING.md` and the
+  phase-plan overview now state explicitly that closing a phase means updating
+  every status surface in the same change.
 - Documentation: architecture, voice persona, five Architecture Decision
   Records, and the five-phase plan with measurable goals.
 
-[Unreleased]: https://github.com/ttotheq/jarvis/commits/main
+[Unreleased]: https://github.com/ttotheq/jarvis/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ttotheq/jarvis/releases/tag/v1.0.0

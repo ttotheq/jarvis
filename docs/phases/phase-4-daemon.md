@@ -1,15 +1,16 @@
 # Phase 4 — Daemon polish
 
-- **Status:** In progress — **G4.0** (wake-phrase barge-in), **G4.1** (launchd
+- **Status:** Done (2026-05-27). **G4.0** (wake-phrase barge-in), **G4.1** (launchd
   service lifecycle, ADR-0006), the **always-on wake-word runtime** (the entry
   point the service runs, verified live), **G4.6** (smooth streaming playback),
-  **G4.2** (cold start), **G4.3** (stability soak), and **G4.4** (config-driven
-  runtime) are done as of 2026-05-27. `jarvis run` now defaults to a headless
-  wake-word cascade that plays multi-sentence replies gaplessly, is ready for
-  "hey jarvis" in ~1 s (the heavy loads warm in the background), held flat memory
-  with zero crashes over a 1-hour idle soak, and is fully retargetable via `.env`
-  (voice, Claude model, STT model, permission mode) with no code edit. The only
-  remaining goal is **G4.5** (the v1.0.0 release).
+  **G4.2** (cold start), **G4.3** (stability soak), **G4.4** (config-driven
+  runtime), and **G4.5** (the v1.0.0 release) are all complete. `jarvis run`
+  defaults to a headless wake-word cascade that plays multi-sentence replies
+  gaplessly, is ready for "hey jarvis" in ~1 s (the heavy loads warm in the
+  background), held flat memory with zero crashes over a 1-hour idle soak, and is
+  fully retargetable via `.env` (voice, Claude model, STT model, permission mode)
+  with no code edit. **`v1.0.0` is released** — this closes Phase 4 and the
+  five-phase plan.
 - **Milestone:** Phase 4
 - **Objective:** Make Jarvis a dependable always-on background service and cut
   the first release.
@@ -453,3 +454,36 @@ three of the four knobs were already wired, and the work closed the one real gap
   seam, so it runs in CI without the `voice` extra. The full suite stayed green at
   **85%+ coverage** with no new `# pragma: no cover`.
 - No live leg: the change is pure settings→argv wiring, fully covered by unit tests.
+
+### G4.5 — release · _Done 2026-05-27_
+
+`v1.0.0` cut — the last Phase 4 goal, closing the phase and the five-phase plan.
+
+- **CHANGELOG finalized.** The accreted `[Unreleased]` section (which spanned all
+  of Phases 0–4 and had accumulated duplicate `### Added`/`### Changed`/`### Fixed`
+  headers from per-PR appends) was consolidated into a single
+  `## [1.0.0] - 2026-05-27` section with one of each subsection, ordered
+  Added / Changed / Fixed / Documentation. Scaffolding and Phase 0–1 entries that
+  had been mislabeled under `### Fixed` were moved to `### Added`; the repo-status
+  and onboarding entries were grouped under `### Documentation`. A fresh empty
+  `## [Unreleased]` skeleton sits above it, and the bottom compare-links were
+  repaired to the Keep-a-Changelog convention
+  (`[Unreleased]: …/compare/v1.0.0...HEAD`, `[1.0.0]: …/releases/tag/v1.0.0`).
+- **Version bumped.** `pyproject.toml` `version` moved `0.0.0` → `1.0.0`. This is
+  the source `uv build` stamps onto the sdist and wheel, so the published artifacts
+  carry the correct version.
+- **Coverage.** `make check` green at the release commit — **268 passed, 97.17%
+  coverage** (gate 85%), with `ruff check`, `ruff format --check`, and strict
+  `mypy` all clean.
+- **Release mechanism.** The changelog + version bump + Phase 4 status-surface
+  updates landed via a `chore/` PR, squash-merged on green CI. `v1.0.0` was then
+  tagged on the merge commit and pushed, triggering
+  `.github/workflows/release.yml` (`tags: ["v*"]` → `uv build` →
+  `softprops/action-gh-release` with auto-generated notes and `dist/*` attached).
+  The workflow run completed green and published the GitHub Release with the built
+  sdist + wheel.
+
+**Two optional interactive legs remain owed (non-blocking, do not gate the
+release):** a spoken first-turn check on a true cold boot (G4.2) and a faithful
+live-mic full-`jarvis run` hour (G4.3). Both mechanisms are proven; only the
+in-person confirmations are outstanding.
