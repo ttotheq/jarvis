@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Project-scoped Claude Code allowlist at `.claude/settings.json` that pre-approves
+  `WebFetch` for the headless `claude` child Jarvis spawns. Without it, asking
+  Jarvis a question that needed a web lookup (e.g. weather) silently stalled:
+  `--permission-mode acceptEdits` auto-approves file edits but not WebFetch, the
+  `jarvis.permissions` verbal gate only classifies `Bash`, and the daemon has no
+  terminal or GUI surface for Claude Code's default interactive prompt to land on.
+  Scoped to the project so interactive Claude Code sessions outside Jarvis keep
+  the default WebFetch gate. A proper verbal gate for WebFetch is a Phase 5 /
+  Jarvis 2.0 enhancement (would extend `jarvis.permissions` past the Bash matcher).
+
 ### Documentation
 
 - `docs/adr/0007-rebuild-brain-on-claude-agent-sdk.md` records the decision to
