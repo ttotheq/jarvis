@@ -6,6 +6,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Voice persona now reflects that Jarvis runs as a background daemon, not an
+  interactive terminal session — fixes two live failures on 2026-05-27. Asked
+  to open `~/.claude/CLAUDE.md` for visual review, Jarvis hit Read on the
+  out-of-cwd file, got the default Claude Code permission prompt with nowhere
+  to land, then told the user "the permission prompt is still pending, sir —
+  it needs an approval click in the terminal," which is a lie under launchd.
+  Asked to open Pages, it theatre-confirmed "shall I proceed?" (the original
+  persona told Claude to confirm destructive actions but not to *skip*
+  confirming safe ones), heard the verbal "yes" as ordinary text, and never
+  actually ran `Bash(open -a Pages)`. Persona rewrites:
+  - New "How you run" section telling Jarvis it has no screen / no stdout / no
+    permission prompts; the only way to surface something visually is
+    `Bash open <path>` or `open -a "<App>"`.
+  - Replaced the "I've drafted the function; it's on your screen, sir" example
+    (which is a falsehood under the daemon) with the open-the-artefact
+    pattern: "I've opened it in your editor, sir."
+  - New rule: do *not* ask for verbal permission before safe / non-destructive
+    actions. Just run them. Verbal confirmation is reserved for destructive
+    actions, which the real `jarvis.permissions` hook also enforces.
+  - Test `test_persona_prompt_encodes_contract` extended with anchor asserts
+    for the new daemon / open / non-destructive directives so the prompt can't
+    silently regress past these lessons.
+- Widened the project Claude Code allowlist to `Read(/Users/ttotheq/**)` so
+  Jarvis can read the user's `~/.claude/CLAUDE.md`, vault, and other personal
+  files when answering "what does my CLAUDE.md say about my role" / "look at
+  my notes on X." Interactive Claude Code sessions outside this project are
+  unaffected (this is a project-scoped `.claude/settings.json`).
+
 ### Fixed
 
 - Wire the verbal permission gate as a real Claude Code hook. The
