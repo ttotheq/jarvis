@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Documentation
+
+- `docs/adr/0007-rebuild-brain-on-claude-agent-sdk.md` records the decision to
+  rebuild `jarvis.brain` on the local Claude Agent SDK (`claude-agent-sdk`)
+  for Jarvis 2.0 — eliminating the ADR-0003 spawn-per-turn cost, collapsing
+  the `jarvis.permissions` subprocess hook into an in-process `PreToolUse`
+  callback, and unifying voice + keyboard into a single live conversation.
+  Decision accepted 2026-05-27; implementation deferred to after 2026-06-15
+  to land in the Anthropic-subscription Agent SDK credit bucket rather than
+  paying per-token during prototyping. ADR-0003 is now marked superseded.
+
 ### Added
 
 - Status chimes: short eyes-free audio cues on state transitions for the
