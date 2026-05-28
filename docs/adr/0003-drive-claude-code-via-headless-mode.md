@@ -1,6 +1,9 @@
 # ADR-0003: Drive Claude Code via headless mode
 
-- **Status:** Accepted
+- **Status:** Accepted, superseded by
+  [ADR-0007](0007-rebuild-brain-on-claude-agent-sdk.md) (2026-05-27) —
+  implementation deferred to after 2026-06-15. Until ADR-0007 lands, the
+  headless CLI brain described here remains the shipped v1.0.0 backend.
 - **Date:** 2026-05-24
 
 ## Context
