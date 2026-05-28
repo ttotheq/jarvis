@@ -13,11 +13,11 @@ Everything in the voice path runs on-device (Apple Silicon). The only thing that
 
 ## Status
 
-**Phase 3 shipped; G4.0/G4.1/G4.2/G4.3 and the always-on runtime are in** — Jarvis streams
+**All five phases shipped — `v1.0.0` released.** Jarvis streams
 Claude replies, speaks in-character, verbally gates destructive Bash actions before
 they run, only lets `"hey jarvis"` interrupt during `SPEAKING`, and installs as a
 macOS launchd background service (`jarvis service install`) that auto-starts at login
-and restarts on crash. `jarvis run` now defaults to an always-on **wake-word**
+and restarts on crash. `jarvis run` defaults to an always-on **wake-word**
 cascade: it waits for `"hey jarvis"`, endpoints your speech with VAD, replies, and
 returns to waiting — no keyboard, so it runs headless under the service.
 (Push-to-talk and timed turns remain available via `JARVIS_RUN_MODE`.) Cold start is
@@ -25,8 +25,8 @@ fast: readiness gates on the wake detector alone while Kokoro/VAD warm in the
 background, so it is ready for `"hey jarvis"` in **~1 s** (G4.2, target ≤ 10 s); a
 1-hour idle soak held flat memory with zero crashes (G4.3). The whole runtime is
 config-driven — voice, Claude model, STT model, and permission mode are all
-changeable via `.env` with no code edit (G4.4). The remaining Phase 4 work is the
-v1.0.0 release.
+changeable via `.env` with no code edit (G4.4). See the
+[changelog](CHANGELOG.md) for the full release notes.
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -34,7 +34,7 @@ v1.0.0 release.
 | [1 — Walking skeleton](docs/phases/phase-1-skeleton.md) | Push-to-talk → STT → Claude → TTS, end to end | ✅ Done |
 | [2 — Wake word + streaming](docs/phases/phase-2-wakeword-streaming.md) | Wake-word/VAD primitives, streaming, measured latency | ✅ Done |
 | [3 — Jarvis feel](docs/phases/phase-3-jarvis-feel.md) | Barge-in, persona, spoken permission gating | ✅ Done |
-| [4 — Daemon polish](docs/phases/phase-4-daemon.md) | G4.0 wake-phrase barge-in ✅, launchd service ✅, ~1 s cold start ✅, 1-hr soak ✅, config-driven ✅, v1.0.0 release | In progress |
+| [4 — Daemon polish](docs/phases/phase-4-daemon.md) | G4.0 wake-phrase barge-in, launchd service, ~1 s cold start, 1-hr soak, config-driven, smooth playback, v1.0.0 release | ✅ Done |
 
 Each phase has **measurable acceptance goals** ([overview](docs/phases/README.md)) designed to be tracked as Claude Code goals in later iterations.
 
