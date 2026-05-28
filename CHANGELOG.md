@@ -6,6 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Status chimes: short eyes-free audio cues on state transitions for the
+  headless service, closing the Phase 4 in-scope item that was deferred from the
+  always-on runtime change. New `jarvis.chimes` module generates the tones on the
+  fly (no bundled audio assets — deliberate, matching the voice persona's
+  generic posture) and exposes a `build_chime_observer(speaker, *, enabled)`
+  observer wired into `VoiceLoop.on_state` from `jarvis.cli.run`. A `READY`
+  cue plays once at startup; `LISTENING` (a two-note rising motif) plays when
+  the wake phrase is acknowledged; `THINKING` plays once capture ends. IDLE and
+  SPEAKING never chime — IDLE recurs twice between turns (start + end), and
+  SPEAKING is Jarvis's own voice. Each chime is voiced at Kokoro's **24 kHz** so
+  it shares the persistent output stream (`SoundDeviceStreamingSpeaker`) and a
+  short linear attack/release envelope suppresses boundary clicks. The observer
+  drains (`speaker.wait()`) after each cue so the `LISTENING` chime finishes
+  before capture begins (no mic bleed); consecutive identical states are
+  deduped. New config knob `JARVIS_CHIMES_ENABLED` (default `true`) mutes them.
+  Write-first tests in `tests/test_chimes.py` (tone shape/rate/envelope, mapping,
+  enabled/disabled/dedupe/no-wait observer) plus a `tests/test_config.py` case.
+
 ## [1.0.0] - 2026-05-27
 
 First release. Jarvis is a local-first voice cascade for Claude Code: "hey

@@ -265,9 +265,11 @@ self-sustains under the service. This unblocks **G4.2** (cold start) and **G4.3*
   and also avoids the mic-hears-itself self-trigger, but it is **not required**.
   (Unverified: which mic macOS used on the no-override run.)
 
-**Deferred to a focused follow-up:** status chimes (ready/listening/thinking) — a
-Phase 4 in-scope item — ride cleanly on the new `on_state` `IDLE`/`LISTENING`
-transitions and are kept out of this change to keep it tight.
+**Status chimes — landed in a focused post-1.0.0 follow-up** (see the *Status
+chimes* Outcomes section below). They ride on the `on_state` seam as planned,
+though the final mapping settled on `LISTENING` + `THINKING` (with a one-time
+`READY` cue at startup) rather than the literal IDLE/LISTENING the deferral note
+suggested — IDLE re-enters twice between turns and would double-fire.
 
 ### G4.6 — smooth streaming playback · _Done 2026-05-26_
 
@@ -487,3 +489,49 @@ three of the four knobs were already wired, and the work closed the one real gap
 release):** a spoken first-turn check on a true cold boot (G4.2) and a faithful
 live-mic full-`jarvis run` hour (G4.3). Both mechanisms are proven; only the
 in-person confirmations are outstanding.
+
+### Status chimes · _Done (post-1.0.0 follow-up)_
+
+The eyes-free state-transition cues that were deferred out of the always-on
+runtime change. The headless service runs with no terminal in view, so the
+runtime now voices three short tones over the existing audio output: `READY`
+once at startup, `LISTENING` when the wake phrase is acknowledged (you can
+start talking), and `THINKING` once capture ends and Claude is reasoning.
+IDLE and SPEAKING never chime — IDLE re-enters twice between turns and would
+double-fire; SPEAKING is Jarvis's own voice.
+
+- **No copyrighted audio.** The tones are generated on the fly
+  (`jarvis.chimes.make_tone`), deliberately matching the voice persona's
+  posture (`docs/voice-persona.md`): evoke the refined holographic-interface
+  *feel* without sampling any film audio. Each tone carries a short linear
+  attack/release envelope so it never clicks even on the persistent Bluetooth
+  stream.
+- **Same persistent output stream as TTS.** Chimes are voiced at Kokoro's
+  24 kHz so the `SoundDeviceStreamingSpeaker` (G4.6) does not have to renegotiate
+  on the first speech clip after a cue. The chime observer calls `speaker.wait()`
+  after each play so the cue drains before the loop's next step — critically, the
+  `LISTENING` chime finishes before capture begins so it cannot bleed into the
+  microphone.
+- **Wired via the existing seam.** `build_chime_observer(speaker, *, enabled)`
+  returns a pure `on_state` observer (consecutive identical states are deduped);
+  `jarvis.cli.run` passes it as `VoiceLoop.on_state` and plays the `READY` cue
+  once before warming the deferred loads. New config knob `JARVIS_CHIMES_ENABLED`
+  (default `true`) mutes everything.
+
+**Verification:**
+
+- Write-first tests in `tests/test_chimes.py` (12 cases): tone sample
+  rate matches Kokoro, requested duration is honored, attack/release fades
+  attenuate the boundaries (not just the natural sine zero-crossing), named
+  chimes are distinct/audible, the mapping covers only LISTENING + THINKING,
+  the observer plays through the speaker + drains when enabled, is silent
+  when disabled or on unmapped states, dedupes immediate repeats, and works
+  cleanly against a minimal `Speaker` without `wait()`. Plus a
+  `JARVIS_CHIMES_ENABLED` default/override case in `tests/test_config.py`.
+- Full suite green at the change: **282 passed, 97.29% coverage**;
+  `jarvis.chimes` 100% covered; the live wiring in `cli.run` stays
+  `# pragma: no cover`.
+- **Live audible verification owed to Ty:** `jarvis run` and confirm
+  the READY/LISTENING/THINKING tones sound as intended through the persistent
+  output stream (especially on AirPods, where the no-renegotiation property
+  matters).
