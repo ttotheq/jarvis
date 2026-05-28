@@ -188,6 +188,28 @@ def test_main_allows_safe_call_from_stdin() -> None:
     assert confirm.questions == []
 
 
+def test_main_skips_live_confirm_build_on_non_destructive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-destructive calls must not construct the heavy live confirm (Kokoro + whisper).
+
+    Once the hook is registered on the Bash matcher, every ``ls`` / ``git status``
+    invokes ``main``. Building the live confirm there would make the hook so slow
+    it would dominate every Bash call — so the fast path must short-circuit
+    *before* ``build_live_confirm`` is ever touched.
+    """
+    from jarvis import permissions
+
+    def _explode() -> object:
+        raise AssertionError("build_live_confirm must not run on a non-destructive call")
+
+    monkeypatch.setattr(permissions, "build_live_confirm", _explode)
+    stdin = io.StringIO(json.dumps(_payload("Bash", command="ls -la")))
+    stdout = io.StringIO()
+
+    # confirm=None forces the real live-build path if the short-circuit is missing.
+    assert main(stdin=stdin, stdout=stdout, confirm=None) == 0
+    assert json.loads(stdout.getvalue())["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+
 # --- the spoken question respects the persona ------------------------------
 
 
